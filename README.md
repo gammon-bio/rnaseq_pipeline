@@ -17,6 +17,8 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
 
 - Run the Salmon pipeline (raw QC → trim → trimmed QC → MultiQC → quant):
   - bash salmon_pipeline.sh all
+  - To use multiple CPU cores (example: 8 cores):
+    - THREADS=8 bash salmon_pipeline.sh all
   - Inputs: `data/fastq/` with `*_R1_001.fastq.gz` and `*_R2_001.fastq.gz`
   - Outputs:
     - out/fastqc_raw/
