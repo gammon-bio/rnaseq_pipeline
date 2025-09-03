@@ -87,6 +87,20 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
   - MultiQC: Ewels et al., Bioinformatics 2016
   - Ensembl/biomaRt for annotation
 
+## Contributing
+
+- Issues and PRs welcome for small, focused improvements (docs, minor fixes, portability). Please avoid changing the core analysis logic in `tximport_deseq2.rmd` unless requested.
+- Keep changes minimal and backward compatible. For larger ideas, open an issue first to discuss scope.
+- Style: keep bash scripts simple and echo clear progress; R changes should follow existing structure and use parameters where possible.
+
+## Citations
+
+- Salmon: Patro R, Duggal G, Love MI, Irizarry RA, Kingsford C. Salmon provides fast and bias-aware quantification of transcript expression. Nat Methods. 2017.
+- DESeq2: Love MI, Huber W, Anders S. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biol. 2014.
+- tximport: Soneson C, Love MI, Robinson MD. Differential analyses for RNA-seq: transcript-level estimates improve gene-level inferences. F1000Research. 2015.
+- MultiQC: Ewels P et al. MultiQC: summarize analysis results for multiple tools and samples in a single report. Bioinformatics. 2016.
+- Bioconductor workflow: "RNA-seq workflow: gene-level exploratory analysis and differential expression" (rnaseqGene).
+
 ## Repository layout
 
 - salmon_pipeline/
