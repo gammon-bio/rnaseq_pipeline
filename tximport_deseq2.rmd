@@ -6,6 +6,7 @@ params:
   quant_dir: "out/salmon"           # directory containing per-sample Salmon dirs with quant.sf
   gtf_file: "data/references/gtf/Mus_musculus.GRCm39.109.gtf"  # path to GTF (default now under data/references)
   project_name: "CU25"              # project prefix for all output filenames
+  install_pkgs: false                # set TRUE to allow install during render (use conda env instead)
   tximport_rds: !r NULL              # optional precomputed tximport object (.rds)
   sample_table: "CU25_sample_info.csv"  # sample table CSV (rows = samples)
   group_col: "trx"                  # column in sample_table used for design
@@ -22,19 +23,22 @@ knitr::opts_chunk$set(echo = TRUE)
 # Preparing Data for DESeq2 with tximport and labeling Gene IDs
 ```{r}
 # -----------------------------
-# 1. Load libraries
+# 1. Load libraries (installs optional; prefer conda env)
 # -----------------------------
-install.packages("BiocManager", repos = "https://cloud.r-project.org")
-BiocManager::install("tximport")
-BiocManager::install("GenomicFeatures")
-BiocManager::install("txdbmaker")
+if (isTRUE(params$install_pkgs)) {
+  if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager", repos = "https://cloud.r-project.org")
+  BiocManager::install(c("tximport","GenomicFeatures","txdbmaker"), ask = FALSE, update = FALSE)
+}
 
-library(tximport)
-library(readr)
-library(GenomicFeatures)
-library(txdbmaker)
-library(dplyr)
-library(tibble)
+suppressPackageStartupMessages({
+  library(tximport)
+  library(readr)
+  library(GenomicFeatures)
+  library(txdbmaker)
+  library(dplyr)
+  library(tibble)
+})
 
 # Parameters (backward-compatible defaults in YAML)
 quant_dir    <- params$quant_dir
@@ -90,18 +94,23 @@ if (!is.null(tximport_rds)) {
 # 5. Add Gene Symbols (Optional)
 # -----------------------------
 # Use biomaRt to annotate gene IDs with symbols (requires internet)
-if (!requireNamespace("biomaRt", quietly = TRUE)) {
-  install.packages("biomaRt")
+if (isTRUE(params$install_pkgs) && !requireNamespace("biomaRt", quietly = TRUE)) {
+  install.packages("biomaRt", repos = "https://cloud.r-project.org")
 }
-library(biomaRt)
+suppressPackageStartupMessages(library(biomaRt))
 
-ensembl <- useEnsembl(biomart = "genes", dataset = "mmusculus_gene_ensembl")
 gene_ids <- rownames(txi$counts)
-
-annot <- getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
-               filters = "ensembl_gene_id",
-               values = gene_ids,
-               mart = ensembl)
+annot <- try({
+  ensembl <- useEnsembl(biomart = "genes", dataset = "mmusculus_gene_ensembl")
+  getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
+        filters = "ensembl_gene_id",
+        values = gene_ids,
+        mart = ensembl)
+}, silent = TRUE)
+if (inherits(annot, "try-error")) {
+  message("[Rmd] biomaRt lookup failed; proceeding without symbols.")
+  annot <- data.frame(ensembl_gene_id = gene_ids, external_gene_name = NA_character_)
+}
 
 # Merge gene symbols
 counts_with_symbols <- as.data.frame(txi$counts)
@@ -163,16 +172,19 @@ cat("✔ Gene-level counts saved as:\n- ", file.path(out_dir, paste0(file_prefix
 
 ```{r}
 
-if (!requireNamespace("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-install.packages("BiocManager", repos = "https://cloud.r-project.org")
-BiocManager::install("DESeq2")
+if (isTRUE(params$install_pkgs)) {
+  if (!requireNamespace("BiocManager", quietly = TRUE))
+      install.packages("BiocManager", repos = "https://cloud.r-project.org")
+  BiocManager::install("DESeq2", ask = FALSE, update = FALSE)
+  if (!requireNamespace("tidyverse", quietly = TRUE))
+    install.packages("tidyverse", repos = "https://cloud.r-project.org")
+}
 
-install.packages("tidyverse")
-
-library(tidyverse)
-library(DESeq2)
-library(dplyr)
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(DESeq2)
+  library(dplyr)
+})
 
 ```
 
@@ -273,11 +285,13 @@ plotMA(dds)
 
 ```{r}
 # Make sure you have ggrepel installed
-if (!requireNamespace("ggrepel", quietly=TRUE)) {
-  install.packages("ggrepel")
+if (isTRUE(params$install_pkgs) && !requireNamespace("ggrepel", quietly=TRUE)) {
+  install.packages("ggrepel", repos = "https://cloud.r-project.org")
 }
-library(ggplot2)
-library(ggrepel)
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(ggrepel)
+})
 
 # Prepare dataframe
 res_df$gene <- rownames(res_df)
@@ -329,9 +343,11 @@ ggsave(file.path(out_dir, paste0(file_prefix, "PCA_plot.pdf")),
 ```{r}
 
 # libraries
-library(enrichR)
-library(writexl)
-library(openxlsx)
+suppressPackageStartupMessages({
+  library(enrichR)
+  library(writexl)
+  library(openxlsx)
+})
 
 # Defining Databases
 db <- c("KEGG_2019_Mouse", "Reactome_2022", "GO_Biological_Process_2025", "GO_Cellular_Component_2025", "GO_Molecular_Function_2025", "Tabula_Muris", "Elsevier_Pathway_Collection", "Bioplanet_2019")
