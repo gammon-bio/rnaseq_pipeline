@@ -124,8 +124,12 @@ st <- read.csv(sample_table_path, row.names = 1, check.names = FALSE)
 sample_ids <- rownames(st)
 
 clean_names_from_sample_table <- function(current_names, sample_ids) {
+  escape_regex <- function(x) gsub("([][{}()+*^$|\\?.])", "\\\\\\1", x)
   vapply(current_names, function(nm) {
-    hits <- sample_ids[sapply(sample_ids, function(s) grepl(s, nm, fixed = TRUE))]
+    hits <- sample_ids[sapply(sample_ids, function(s) {
+      pat <- paste0("(^|[^A-Za-z0-9])", escape_regex(s), "($|[^A-Za-z0-9])")
+      grepl(pat, nm, ignore.case = TRUE, perl = TRUE)
+    })]
     if (length(hits) == 1) hits else nm
   }, character(1))
 }
