@@ -153,6 +153,29 @@ counts_annotated <- counts_annotated %>%
 
 count_cols <- setdiff(colnames(counts_annotated), "gene_symbol")
 new_count_cols <- clean_names_from_sample_table(count_cols, sample_ids)
+
+# Diagnostics: report columns that did not map uniquely
+diagnose_mapping <- function(current_names, sample_ids) {
+  escape_regex <- function(x) gsub("([][{}()+*^$|\\?.])", "\\\\\\1", x)
+  res <- lapply(current_names, function(nm) {
+    hits <- sample_ids[sapply(sample_ids, function(s) {
+      pat <- paste0("(^|[^A-Za-z0-9])", escape_regex(s), "($|[^A-Za-z0-9])")
+      grepl(pat, nm, ignore.case = TRUE, perl = TRUE)
+    })]
+    list(name = nm, hits = hits)
+  })
+  none <- vapply(res, function(x) length(x$hits) == 0, logical(1))
+  multi <- vapply(res, function(x) length(x$hits) > 1, logical(1))
+  if (any(none)) {
+    message("[Rmd] Sample name mapping: no unique match for: ", paste(vapply(res[none], `[[`, character(1), "name"), collapse = ", "))
+  }
+  if (any(multi)) {
+    details <- vapply(res[multi], function(x) paste0(x$name, " -> {", paste(x$hits, collapse = "/"), "}"), character(1))
+    message("[Rmd] Sample name mapping: multiple matches: ", paste(details, collapse = "; "))
+  }
+}
+
+diagnose_mapping(count_cols, sample_ids)
 colnames(counts_annotated)[match(count_cols, colnames(counts_annotated))] <- new_count_cols
 
 # Reorder to match sample table first, then any remaining

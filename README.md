@@ -67,6 +67,14 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
   - `--group_col` design column (default: `condition`)
   - `--padj_thresh`, `--lfc_thresh` forwarded to your volcano/summary logic
   - `--out_dir` output directory (default: `out/deseq2`)
+  - `--project_name` prefix added to all outputs (e.g., `CU25_*.csv`)
+
+### Rmd parameter: install_pkgs
+
+- The Rmd has a parameter `install_pkgs` (default: false) that gates any `install.packages`/`BiocManager::install` calls.
+- With the provided `environment-r.yml`, installs are not needed; leave `install_pkgs: false`.
+- If running outside conda and you need the Rmd to install its own dependencies during render, set it in the YAML header or override at render time, for example:
+  - Rscript -e "rmarkdown::render('tximport_deseq2.rmd', params=list(install_pkgs=TRUE))"
 
 ## Notes on practices and reproducibility
 
