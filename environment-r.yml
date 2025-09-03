@@ -1,0 +1,26 @@
+# environment-r.yml (created 2025-09-03)
+# Purpose: R runtime for tximport + DESeq2 analysis. Includes exactly the libraries used in the Rmd, plus rmarkdown/optparse for rendering and CLI.
+name: rnaseq-r
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.*
+  - r-rmarkdown=2.*   # render Rmd headlessly
+  - r-optparse=1.*    # CLI wrapper
+  # Libraries called by tximport_deseq2.Rmd
+  - bioconductor-tximport=1.*
+  - r-readr=2.*
+  - bioconductor-genomicfeatures=1.*
+  - bioconductor-txdbmaker=1.*
+  - r-dplyr=1.*
+  - r-tibble=3.*
+  - bioconductor-biomart=2.*
+  - r-ggplot2=3.*
+  - r-ggrepel=0.*
+  - r-tidyverse=2.*
+  - bioconductor-deseq2=1.*
+  - r-enrichr=3.*
+  - r-writexl=1.*
+  - r-openxlsx=4.*
+

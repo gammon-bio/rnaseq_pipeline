@@ -1,0 +1,22 @@
+# Outputs and references
+out/
+refs/*.gz
+refs/*.fa
+refs/*.fa.gz
+refs/*.gtf
+refs/*.gtf.gz
+refs/README.md
+logs/
+
+# R/RStudio artifacts
+.Rproj.user/
+.Rhistory
+.RData
+.DS_Store
+
+# Conda environments
+env/
+.conda/
+conda_envs/
+.mamba/
+
