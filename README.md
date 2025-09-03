@@ -17,7 +17,7 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
 
 - Run the Salmon pipeline (raw QC → trim → trimmed QC → MultiQC → quant):
   - bash salmon_pipeline.sh all
-  - Inputs: `fastq/` with `*_R1_001.fastq.gz` and `*_R2_001.fastq.gz`
+  - Inputs: `data/fastq/` with `*_R1_001.fastq.gz` and `*_R2_001.fastq.gz`
   - Outputs:
     - out/fastqc_raw/
     - out/trimmed/
@@ -30,7 +30,7 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
   - conda activate rnaseq-r
   - Rscript scripts/run_deseq2.R \
       --quant_dir out/salmon \
-      --gtf refs/gtf/<your>.gtf \
+      --gtf data/references/gtf/<your>.gtf \
       --sample_table examples/sample_table.csv \
       --group_col condition \
       --padj_thresh 0.05 --lfc_thresh 0.5
@@ -88,7 +88,9 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
   - scripts/
     - get_refs.sh
     - run_deseq2.R
-  - refs/ (created by get_refs.sh)
+  - data/
+    - fastq/ (place raw FASTQs here)
+    - references/ (created by get_refs.sh)
   - out/ (pipeline outputs)
   - examples/
     - sample_table.csv
@@ -97,4 +99,3 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
 
 - `salmon_pipeline.sh` keeps your original entrypoint and step flag (`all|qc|trim|salmon`). It now logs progress with percentages and writes outputs to `out/` subfolders. MultiQC is pointed at FastQC outputs and Trimmomatic logs under `logs/` so it picks them up.
 - `tximport_deseq2.rmd` is unchanged in analysis logic; only parameters were added for file paths and thresholds so your exact volcano and enrichment code is preserved.
-

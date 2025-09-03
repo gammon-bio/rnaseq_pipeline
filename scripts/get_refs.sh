@@ -11,7 +11,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-REFS_DIR="${ROOT_DIR}/refs"
+REFS_DIR="${ROOT_DIR}/data/references"
 GTF_DIR="${REFS_DIR}/gtf"
 FA_DIR="${REFS_DIR}/fa"
 
@@ -66,8 +66,18 @@ fi
 # Construct URLs if not provided explicitly
 if [[ -z "${gtf_url}" ]]; then
   if [[ "${release}" == "current" ]]; then
-    # file names still contain release; we won't guess — use wildcard after download rename
-    gtf_url="${base}/${rel_path}/gtf/${lower_species}/${cap_species}.${build}.*.gtf.gz"
+    # Query CHECKSUMS to resolve the exact current GTF filename
+    checksums_url="${base}/${rel_path}/gtf/${lower_species}/CHECKSUMS"
+    echo "[get_refs] Resolving current GTF via CHECKSUMS: ${checksums_url}" >&2
+    tmp_checksums="$(mktemp)"
+    curl -fL -C - -o "${tmp_checksums}" "${checksums_url}"
+    gtf_file_name=$(awk '{print $2}' "${tmp_checksums}" | grep -E "^${cap_species}\\.${build}\\.[0-9]+\\.gtf\\.gz$" | head -n1)
+    rm -f "${tmp_checksums}"
+    if [[ -z "${gtf_file_name}" ]]; then
+      echo "ERROR: Could not resolve current GTF filename from CHECKSUMS. Pass --gtf_url explicitly." >&2
+      exit 1
+    fi
+    gtf_url="${base}/${rel_path}/gtf/${lower_species}/${gtf_file_name}"
   else
     gtf_url="${base}/${rel_path}/gtf/${lower_species}/${cap_species}.${build}.${release}.gtf.gz"
   fi
@@ -144,4 +154,3 @@ readme="${REFS_DIR}/README.md"
 } > "${readme}"
 
 echo "[get_refs] Done. Files in: ${REFS_DIR}" >&2
-

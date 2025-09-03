@@ -55,7 +55,7 @@ dir.create(opt$out_dir, showWarnings = FALSE, recursive = TRUE)
 # Prepare params for Rmd
 params <- list(
   quant_dir   = if (!is.null(opt$quant_dir)) opt$quant_dir else "out/salmon",
-  gtf_file    = if (!is.null(opt$gtf)) opt$gtf else "reference/Mus_musculus.GRCm39.109.gtf",
+  gtf_file    = if (!is.null(opt$gtf)) opt$gtf else "data/references/gtf/Mus_musculus.GRCm39.109.gtf",
   tximport_rds = NULL,
   sample_table = opt$sample_table,
   group_col    = opt$group_col,

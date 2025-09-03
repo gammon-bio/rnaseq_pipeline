@@ -4,7 +4,7 @@ output: html_document
 date: "2025-07-17"
 params:
   quant_dir: "out/salmon"           # directory containing per-sample Salmon dirs with quant.sf
-  gtf_file: "reference/Mus_musculus.GRCm39.109.gtf"  # path to GTF (default preserves original)
+  gtf_file: "data/references/gtf/Mus_musculus.GRCm39.109.gtf"  # path to GTF (default now under data/references)
   tximport_rds: !r NULL              # optional precomputed tximport object (.rds)
   sample_table: "CU25_sample_info.csv"  # sample table CSV (rows = samples)
   group_col: "trx"                  # column in sample_table used for design
@@ -371,4 +371,3 @@ saveWorkbook(wb,
              overwrite = TRUE)
 
 ```
-

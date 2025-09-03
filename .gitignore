@@ -1,12 +1,12 @@
 # Outputs and references
 out/
-refs/*.gz
-refs/*.fa
-refs/*.fa.gz
-refs/*.gtf
-refs/*.gtf.gz
-refs/README.md
 logs/
+
+# Data (raw FASTQs and downloaded references)
+data/fastq/*
+data/references/*
+!data/fastq/.gitkeep
+!data/references/.gitkeep
 
 # R/RStudio artifacts
 .Rproj.user/
@@ -19,4 +19,3 @@ env/
 .conda/
 conda_envs/
 .mamba/
-

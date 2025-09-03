@@ -15,7 +15,7 @@ fi
 
 # 1) Project directories (script‑relative)
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RAW_DIR="${PROJECT_DIR}/fastq"                  # input FASTQs
+RAW_DIR="${PROJECT_DIR}/data/fastq"                  # input FASTQs
 OUT_DIR="${PROJECT_DIR}/out"
 FASTQC_RAW_DIR="${OUT_DIR}/fastqc_raw"
 TRIMMED_DIR="${OUT_DIR}/trimmed"
@@ -25,7 +25,7 @@ SALMON_OUT_DIR="${OUT_DIR}/salmon"
 LOGS_DIR="${PROJECT_DIR}/logs"
 
 # References
-REFS_DIR="${PROJECT_DIR}/refs"
+REFS_DIR="${PROJECT_DIR}/data/references"
 FA_DIR="${REFS_DIR}/fa"
 GTF_DIR="${REFS_DIR}/gtf"
 SALMON_INDEX="${PROJECT_DIR}/salmon_index"
@@ -142,4 +142,3 @@ echo "  • Trimmed reads:    ${TRIMMED_DIR}"
 echo "  • FastQC (trimmed): ${FASTQC_TRIM_DIR}"
 echo "  • MultiQC:          ${MULTIQC_DIR}"
 echo "  • Salmon outputs:   ${SALMON_OUT_DIR}/<sample>/"
-
