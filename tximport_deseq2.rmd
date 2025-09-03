@@ -5,6 +5,7 @@ date: "2025-07-17"
 params:
   quant_dir: "out/salmon"           # directory containing per-sample Salmon dirs with quant.sf
   gtf_file: "data/references/gtf/Mus_musculus.GRCm39.109.gtf"  # path to GTF (default now under data/references)
+  project_name: "CU25"              # project prefix for all output filenames
   tximport_rds: !r NULL              # optional precomputed tximport object (.rds)
   sample_table: "CU25_sample_info.csv"  # sample table CSV (rows = samples)
   group_col: "trx"                  # column in sample_table used for design
@@ -36,12 +37,14 @@ library(dplyr)
 library(tibble)
 
 # Parameters (backward-compatible defaults in YAML)
-quant_dir <- params$quant_dir
-gtf_file <- params$gtf_file
-out_dir <- params$out_dir
-padj_thresh <- params$padj_thresh
-lfc_thresh <- params$lfc_thresh
+quant_dir    <- params$quant_dir
+gtf_file     <- params$gtf_file
+out_dir      <- params$out_dir
+padj_thresh  <- params$padj_thresh
+lfc_thresh   <- params$lfc_thresh
 tximport_rds <- params$tximport_rds
+project_name <- params$project_name
+file_prefix  <- paste0(project_name, "_")
 
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -115,24 +118,40 @@ counts_annotated <- counts_annotated %>%
 # 6. Save outputs
 # -----------------------------
 
-# cleaning files to order them by number
+# Rename columns to explicit sample IDs from the sample table
+sample_table_path <- params$sample_table
+st <- read.csv(sample_table_path, row.names = 1, check.names = FALSE)
+sample_ids <- rownames(st)
+
+clean_names_from_sample_table <- function(current_names, sample_ids) {
+  vapply(current_names, function(nm) {
+    hits <- sample_ids[sapply(sample_ids, function(s) grepl(s, nm, fixed = TRUE))]
+    if (length(hits) == 1) hits else nm
+  }, character(1))
+}
+
+# Apply to txi counts and annotated counts
+colnames(txi$counts) <- clean_names_from_sample_table(colnames(txi$counts), sample_ids)
+
 library(dplyr)
 
 counts_annotated <- counts_annotated %>%
-  dplyr::select(gene_symbol, matches("_quant$")) %>%
-  setNames(c(
-    "gene_symbol",
-    sub("^([^_]+_[0-9]+)_.*$", "\\1", names(.)[-1])
-  )) %>%
-  { .[, c(
-      1,
-      order(as.numeric(sub("^[^_]+_([0-9]+)$", "\\1", names(.)[-1]))) + 1
-    )] }
+  dplyr::select(gene_symbol, dplyr::everything())
 
-write.csv(counts_annotated, file = file.path(out_dir, "gene_counts_with_symbols.csv"), row.names = FALSE)
-write.csv(txi$counts, file = file.path(out_dir, "raw_gene_counts.csv"))
+count_cols <- setdiff(colnames(counts_annotated), "gene_symbol")
+new_count_cols <- clean_names_from_sample_table(count_cols, sample_ids)
+colnames(counts_annotated)[match(count_cols, colnames(counts_annotated))] <- new_count_cols
 
-cat("✔ Gene-level counts saved as:\n- ", file.path(out_dir, "gene_counts_with_symbols.csv"), "\n- ", file.path(out_dir, "raw_gene_counts.csv"), "\n", sep = "")
+# Reorder to match sample table first, then any remaining
+ordered_cols <- c("gene_symbol",
+                  sample_ids[sample_ids %in% new_count_cols],
+                  setdiff(new_count_cols, sample_ids))
+counts_annotated <- counts_annotated[, ordered_cols, drop = FALSE]
+
+write.csv(counts_annotated, file = file.path(out_dir, paste0(file_prefix, "gene_counts_with_symbols.csv")), row.names = FALSE)
+write.csv(txi$counts, file = file.path(out_dir, paste0(file_prefix, "raw_gene_counts.csv")))
+
+cat("✔ Gene-level counts saved as:\n- ", file.path(out_dir, paste0(file_prefix, "gene_counts_with_symbols.csv")), "\n- ", file.path(out_dir, paste0(file_prefix, "raw_gene_counts.csv")), "\n", sep = "")
 ```
 
 
@@ -156,11 +175,11 @@ library(dplyr)
 # Downloading dataset and cleaning
 
 ```{r}
-# name to save files
-name <- "CU25"
+# project name prefix for outputs
+name <- project_name
 
 # Read count matrix and sample info
-df <- read.csv(file.path(out_dir, "gene_counts_with_symbols.csv"), stringsAsFactors=FALSE)
+df <- read.csv(file.path(out_dir, paste0(file_prefix, "gene_counts_with_symbols.csv")), stringsAsFactors=FALSE)
 
 # removing blank rows
 df <- df[df[[1]] != "",]
@@ -225,7 +244,7 @@ res
 res_df <- as.data.frame(res)
 
 write.csv(res_df,
-          file = file.path(out_dir, paste0("DESeq2_full_results_", name, ".csv")),
+          file = file.path(out_dir, paste0(file_prefix, "DESeq2_full_results.csv")),
           row.names = TRUE)
 ```
 
@@ -277,7 +296,7 @@ volcano_plot <- ggplot(data=res_df, aes(x= log2FoldChange, y=-log10(padj), col =
   ggtitle("Control vs ID8 (p53-/-)") +
   geom_text_repel(max.overlaps = Inf)
 
-ggsave(file.path(out_dir, paste0("volcano_plot_", name, ".pdf")), 
+ggsave(file.path(out_dir, paste0(file_prefix, "volcano_plot.pdf")), 
        plot = volcano_plot,
        device = pdf,
        width = 10,
@@ -290,11 +309,11 @@ ggsave(file.path(out_dir, paste0("volcano_plot_", name, ".pdf")),
 vsd <- vst(dds, blind = FALSE)
 plotPCA(vsd, intgroup = params$group_col)
 
-write.csv(assay(vsd), file = file.path(out_dir, paste0("vst_norm_counts_", name, ".csv")))
+write.csv(assay(vsd), file = file.path(out_dir, paste0(file_prefix, "vst_norm_counts.csv")))
 
 pca_plot <- plotPCA(vsd, intgroup = params$group_col)+ stat_ellipse(linetype = 3)
 
-ggsave(file.path(out_dir, paste0("PCA_plot_", name, ".pdf")), 
+ggsave(file.path(out_dir, paste0(file_prefix, "PCA_plot.pdf")), 
        plot = pca_plot,
        device = pdf,
        width = 7,
@@ -338,7 +357,7 @@ for (db_name in db){
 
 # saving workbook
 saveWorkbook(wb,
-             file = file.path(out_dir, paste0("Upregulated_cachexia_Enrichment_results_", name, ".xlsx")),
+             file = file.path(out_dir, paste0(file_prefix, "Upregulated_cachexia_Enrichment_results.xlsx")),
              overwrite = TRUE)
 
 
@@ -367,7 +386,7 @@ for (db_name in db){
 
 # saving workbook
 saveWorkbook(wb,
-             file = file.path(out_dir, paste0("Downregulated_cachexia_Enrichment_results_", name, ".xlsx")),
+             file = file.path(out_dir, paste0(file_prefix, "Downregulated_cachexia_Enrichment_results.xlsx")),
              overwrite = TRUE)
 
 ```

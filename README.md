@@ -33,6 +33,7 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
       --gtf data/references/gtf/<your>.gtf \
       --sample_table examples/sample_table.csv \
       --group_col condition \
+      --project_name CU25 \
       --padj_thresh 0.05 --lfc_thresh 0.5
   - Outputs (written by your Rmd under `out/deseq2/`):
     - DE results CSV (e.g., `DESeq2_full_results_*.csv`)

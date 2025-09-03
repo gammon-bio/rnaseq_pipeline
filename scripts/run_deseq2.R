@@ -41,7 +41,9 @@ option_list <- list(
   make_option(c("--lfc_thresh"), type = "double", default = 0.5,
               help = "Absolute log2FC threshold for volcano lines [default %default]"),
   make_option(c("--out_dir"), type = "character", default = "out/deseq2",
-              help = "Output directory for DESeq2 artifacts [default %default]")
+              help = "Output directory for DESeq2 artifacts [default %default]"),
+  make_option(c("--project_name"), type = "character", default = "project",
+              help = "Project name prefix for output files [default %default]")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -61,7 +63,8 @@ params <- list(
   group_col    = opt$group_col,
   out_dir      = opt$out_dir,
   padj_thresh  = opt$padj_thresh,
-  lfc_thresh   = opt$lfc_thresh
+  lfc_thresh   = opt$lfc_thresh,
+  project_name = opt$project_name
 )
 
 # Option branch: tximport_rds provided directly
