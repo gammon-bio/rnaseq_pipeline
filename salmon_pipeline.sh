@@ -106,7 +106,7 @@ fi
 
 # 7) Salmon index & quantification
 if [[ "$START_STEP" == "all" || "$START_STEP" == "salmon" ]]; then
-  # Find FASTA (cdna) in refs/fa
+  # Find FASTA (cdna) in data/references/fa
   FA_GZ=( "${FA_DIR}"/*.fa.gz )
   FA=( "${FA_DIR}"/*.fa )
   REF_FASTA=""

@@ -50,13 +50,27 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
   - `--species` human|mouse (default: human)
   - `--build` GRCh38|GRCm39 (default depends on species)
   - `--release` <n>|current (default: current)
+  - `--gtf_flavor` plain|chr|chr_patch_hapl_scaff|abinitio|auto (default: auto; prefers plain)
   - `--gtf_url` and `--fasta_url` to override URLs directly
 - Behavior:
-  - Creates `refs/{gtf,fa}/`
+  - Creates `data/references/{gtf,fa}/`
   - Downloads via `curl -L -C -` (resume)
   - Decompresses `.gz` to `.gtf`/`.fa`
-  - Writes `refs/README.md` with exact URLs and SHA256 checksums
+  - Writes `data/references/README.md` with exact URLs and SHA256 checksums
 - Salmon references use Ensembl cDNA FASTA (best practice for transcript-level quantification).
+
+## Optional: Test Dataset (GSE52778)
+
+- Fetch example FASTQs into `data/fastq/`:
+  - `bash scripts/fetch_test_fastqs.sh`
+  - Options:
+    - `--geo GSE52778` to change GEO accession
+    - `--runs SRR123,SRR456` to specify runs directly
+    - `--method ena|sra-tools|auto` (default: auto; ENA preferred)
+    - `--out data/fastq` to change output directory
+  - Notes:
+    - Uses ENA’s API to fetch direct FASTQ URLs when available; falls back to SRA Toolkit if you choose `--method sra-tools` (install with: `mamba install -c bioconda sra-tools`).
+    - Downloads resume (`curl -C -`) and compress outputs (SRA path gzips when using fasterq-dump).
 
 ## DESeq2 runner (scripts/run_deseq2.R)
 

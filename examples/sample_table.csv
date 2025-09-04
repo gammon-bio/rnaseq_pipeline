@@ -1,3 +1,5 @@
 sample,condition
-sampleA,control
-sampleB,treated
+SRR1039508,control
+SRR1039512,control
+SRR1039509,treated
+SRR1039513,treated

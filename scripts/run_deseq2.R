@@ -5,7 +5,7 @@
 # Usage examples:
 #   Rscript scripts/run_deseq2.R \
 #     --quant_dir out/salmon \
-#     --gtf refs/gtf/Homo_sapiens.GRCh38.110.gtf \
+#     --gtf data/references/gtf/Homo_sapiens.GRCh38.110.gtf \
 #     --sample_table examples/sample_table.csv \
 #     --group_col condition
 #
