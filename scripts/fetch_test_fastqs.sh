@@ -14,12 +14,12 @@ trap cleanup EXIT INT TERM
 #   bash scripts/fetch_test_fastqs.sh
 #   bash scripts/fetch_test_fastqs.sh --geo GSE52778 --method ena
 #   bash scripts/fetch_test_fastqs.sh --runs SRR123,SRR456 --out data/fastq
-#   THREADS=8 bash scripts/fetch_test_fastqs.sh --method sra-tools
+#   THREADS=8 bash scripts/fetch_test_fastqs.sh
 #
 # Notes:
-# - Default method is 'auto' (tries ENA direct FASTQ; if unavailable, prints
-#   instructions for SRA Toolkit). You can force --method sra-tools if preferred.
-# - Requires network access. Downloads resume with curl -C -.
+# - Default method is 'sra-tools' (uses SRA Toolkit's fasterq-dump).
+#   You can force --method ena to fetch from ENA instead.
+# - Requires network access. ENA downloads resume with curl -C -.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -28,7 +28,7 @@ FASTQ_DIR="${ROOT_DIR}/data/fastq"  # Base fastq directory
 geo="GSE52778"
 runs_csv=""
 out_dir=""  # Will be set to FASTQ_DIR/subdir if --out specifies a subdir
-method="auto"   # ena|sra-tools|auto
+method="sra-tools"   # ena|sra-tools|auto (default: sra-tools)
 threads="${THREADS:-4}"
 parallel_downloads="${PARALLEL:-4}"  # Number of parallel downloads, defaults to 4
 
@@ -183,8 +183,12 @@ download_run_via_sra_tools() {
   fi
   log "Using SRA Toolkit fasterq-dump for ${run} (threads=${thr})"
   fasterq-dump "${run}" -e "${thr}" -O "$out"
-  # gzip the outputs for consistency
-  find "$out" -maxdepth 1 -type f -name "${run}_*.fastq" -print0 | xargs -0 -I{} gzip -f {}
+  # Compress outputs for consistency (use pigz if available)
+  local compressor="gzip -f"
+  if command -v pigz >/dev/null 2>&1; then
+    compressor="pigz -f -p ${thr}"
+  fi
+  find "$out" -maxdepth 1 -type f -name "${run}_*.fastq" -print0 | xargs -0 -I{} sh -c "${compressor} \"{}\""
 }
 
 # 1) Resolve SRR list
@@ -266,4 +270,3 @@ if [[ $fail_count -gt 0 ]]; then
   err "There were $fail_count failures. See logs above."
   exit 2
 fi
-

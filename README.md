@@ -28,6 +28,15 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
     - out/salmon/<sample>/ (quant.sf)
     - logs/
 
+### FASTQ Naming and Renaming
+
+- Expected naming for paired-end reads: `<SAMPLE>_R1_001.fastq.gz` and `<SAMPLE>_R2_001.fastq.gz` in `data/fastq/`.
+- If your files are SRA-style (e.g., `SAMPLE_1.fastq.gz` / `SAMPLE_2.fastq.gz` or `.fq.gz`), use the helper script to standardize names:
+  - Preview changes: `bash scripts/rename_fastqs.sh --dry-run`
+  - Apply changes: `bash scripts/rename_fastqs.sh`
+  - Custom folder: `bash scripts/rename_fastqs.sh --dir path/to/fastqs`
+  - The script converts `_1/_2` to `_R1_001/_R2_001` and normalizes `.fq.gz` to `.fastq.gz`.
+
 - Activate R env and run DESeq2 wrapper (renders your Rmd headlessly):
   - conda activate rnaseq-r
   - Rscript scripts/run_deseq2.R \
@@ -62,15 +71,18 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
 ## Optional: Test Dataset (GSE52778)
 
 - Fetch example FASTQs into `data/fastq/`:
-  - `bash scripts/fetch_test_fastqs.sh`
+  - For the test dataset (GSE52778), you must specify the SRR run numbers:
+    - `bash scripts/fetch_test_fastqs.sh --runs SRR1039508,SRR1039509,SRR1039512,SRR1039513`
   - Options:
-    - `--geo GSE52778` to change GEO accession
-    - `--runs SRR123,SRR456` to specify runs directly
-    - `--method ena|sra-tools|auto` (default: auto; ENA preferred)
+    - `--method sra-tools|ena|auto` (default: sra-tools)
+    - `--threads N` to set SRA Tools threads (default from `THREADS` env or 4)
     - `--out data/fastq` to change output directory
+    - `--geo GSE52778` if using a different GEO accession with known SRR numbers
   - Notes:
-    - Uses ENA’s API to fetch direct FASTQ URLs when available; falls back to SRA Toolkit if you choose `--method sra-tools` (install with: `mamba install -c bioconda sra-tools`).
-    - Downloads resume (`curl -C -`) and compress outputs (SRA path gzips when using fasterq-dump).
+    - Default uses SRA Toolkit (`fasterq-dump`); outputs are compressed to `.fastq.gz` (uses `pigz` if available, else `gzip`). Install with: `mamba install -c bioconda sra-tools`.
+    - `--method ena` fetches from ENA using `curl` and resumes partial downloads (`-C -`).
+    - `--method auto` tries ENA first and falls back to SRA Tools if ENA links are unavailable.
+    - If your files are named with `_1/_2`, run `bash scripts/rename_fastqs.sh` to standardize to `_R1_001/_R2_001` before the pipeline.
 
 ## DESeq2 runner (scripts/run_deseq2.R)
 

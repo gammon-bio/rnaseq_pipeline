@@ -1,11 +1,11 @@
 ---
-title: "cu25_deseq2"
+title: "tximport_deseq2"
 output: html_document
 date: "2025-07-17"
 params:
   quant_dir: "out/salmon"           # directory containing per-sample Salmon dirs with quant.sf
   gtf_file: "data/references/gtf/Mus_musculus.GRCm39.109.gtf"  # path to GTF (default now under data/references)
-  project_name: "CU25"              # project prefix for all output filenames
+  project_name: "test"              # project prefix for all output filenames
   install_pkgs: false                # set TRUE to allow install during render (use conda env instead)
   tximport_rds: !r NULL              # optional precomputed tximport object (.rds)
   sample_table: "CU25_sample_info.csv"  # sample table CSV (rows = samples)
@@ -101,7 +101,7 @@ suppressPackageStartupMessages(library(biomaRt))
 
 gene_ids <- rownames(txi$counts)
 annot <- try({
-  ensembl <- useEnsembl(biomart = "genes", dataset = "mmusculus_gene_ensembl")
+  ensembl <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl")
   getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
         filters = "ensembl_gene_id",
         values = gene_ids,
