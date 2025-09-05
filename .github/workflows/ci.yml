@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint (Bash + R parse)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Bash syntax check
+        run: |
+          set -e
+          shopt -s nullglob
+          files=(scripts/*.sh salmon_pipeline.sh)
+          if [ ${#files[@]} -gt 0 ]; then
+            for f in "${files[@]}"; do
+              echo "Checking syntax: $f"
+              bash -n "$f"
+            done
+          fi
+
+      - name: Shellcheck (non-fatal)
+        run: |
+          set +e
+          shopt -s nullglob
+          files=(scripts/*.sh salmon_pipeline.sh)
+          if [ ${#files[@]} -gt 0 ]; then
+            shellcheck -S warning -x "${files[@]}" || true
+          fi
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Parse R scripts
+        run: |
+          set -e
+          Rscript -e 'files <- c("scripts/run_deseq2.R","scripts/debug_deseq2.R"); files <- files[file.exists(files)]; for (f in files) { message("Parsing ", f); parse(f) }'
+
+  cli-tools:
+    name: CLI env smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup micromamba (rnaseq)
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+          cache-downloads: true
+          micromamba-version: latest
+
+      - name: Tool versions
+        shell: bash -l {0}
+        run: |
+          set -e
+          micromamba run -q -n rnaseq bash -lc 'fastqc --version || true'
+          micromamba run -q -n rnaseq bash -lc 'salmon --version'
+          micromamba run -q -n rnaseq bash -lc 'multiqc --version'
+          micromamba run -q -n rnaseq bash -lc 'parallel --version'
+          micromamba run -q -n rnaseq bash -lc 'fasterq-dump --version'
+          micromamba run -q -n rnaseq bash -lc 'pigz --version'
+
