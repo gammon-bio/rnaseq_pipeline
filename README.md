@@ -71,8 +71,9 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
 ## Optional: Test Dataset (GSE52778)
 
 - Fetch example FASTQs into `data/fastq/`:
-  - For the test dataset (GSE52778), you must specify the SRR run numbers:
-    - `bash scripts/fetch_test_fastqs.sh --runs SRR1039508,SRR1039509,SRR1039512,SRR1039513`
+  - You can either provide the SRR run numbers directly, or let the script resolve them from the GEO accession:
+    - Direct runs: `bash scripts/fetch_test_fastqs.sh --runs SRR1039508,SRR1039509,SRR1039512,SRR1039513`
+    - From GEO:   `bash scripts/fetch_test_fastqs.sh --geo GSE52778`
   - Options:
     - `--method sra-tools|ena|auto` (default: sra-tools)
     - `--threads N` to set SRA Tools threads (default from `THREADS` env or 4)
@@ -83,6 +84,23 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
     - `--method ena` fetches from ENA using `curl` and resumes partial downloads (`-C -`).
     - `--method auto` tries ENA first and falls back to SRA Tools if ENA links are unavailable.
     - If your files are named with `_1/_2`, run `bash scripts/rename_fastqs.sh` to standardize to `_R1_001/_R2_001` before the pipeline.
+    - SRA Tools check: `fasterq-dump --version` should print a version. `environment.yml` includes `sra-tools`.
+
+## Expected Outputs
+
+- After running the Salmon pipeline (`bash salmon_pipeline.sh all`):
+  - `out/fastqc_raw/`: FastQC reports for raw reads (`*.html`, `*.zip`).
+  - `out/trimmed/`: Trimmed read pairs (`*_R1_trimmed.fastq.gz`, `*_R2_trimmed.fastq.gz`) and unpaired reads.
+  - `out/fastqc_trimmed/`: FastQC reports on trimmed reads.
+  - `out/multiqc/`: MultiQC summary (`multiqc_report.html`) aggregating FastQC and Trimmomatic logs.
+  - `out/salmon/<sample>/`: Salmon quantification per sample (`quant.sf`, `lib_format_counts.json`, `meta_info.json`).
+
+- After running the DESeq2 wrapper (`scripts/run_deseq2.R`):
+  - `out/deseq2/<PROJECT>_DESeq2_full_results.csv`: Per‑gene statistics (baseMean, log2FC, p-value, padj).
+  - `out/deseq2/<PROJECT>_volcano_plot.pdf`: Volcano plot with thresholds.
+  - `out/deseq2/<PROJECT>_PCA_plot.pdf`: PCA on VST-transformed counts.
+  - `out/deseq2/<PROJECT>_raw_gene_counts.csv` and `_vst_norm_counts.csv`: Count matrices.
+  - Optional enrichment outputs (if enabled in your Rmd): Up/Down regulated enrichment Excel files.
 
 ## DESeq2 runner (scripts/run_deseq2.R)
 

@@ -1,6 +1,7 @@
 # Outputs and references
 out/
 logs/
+salmon_index/
 
 # Data (raw FASTQs and downloaded references)
 data/fastq/*
