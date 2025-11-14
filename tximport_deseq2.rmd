@@ -93,35 +93,51 @@ if (!is.null(tximport_rds)) {
 # -----------------------------
 # 5. Add Gene Symbols (Optional)
 # -----------------------------
-# Use biomaRt to annotate gene IDs with symbols (requires internet)
 if (isTRUE(params$install_pkgs) && !requireNamespace("biomaRt", quietly = TRUE)) {
-  install.packages("biomaRt", repos = "https://cloud.r-project.org")
+ install.packages("biomaRt", repos = "https://cloud.r-project.org")
 }
 suppressPackageStartupMessages(library(biomaRt))
 
 gene_ids <- rownames(txi$counts)
+
 annot <- try({
-  ensembl <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl")
-  getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
-        filters = "ensembl_gene_id",
-        values = gene_ids,
-        mart = ensembl)
+ # You are using mouse, so use mmusculus here, not hsapiens
+ ensembl <- useEnsembl(biomart = "genes", dataset = "mmusculus_gene_ensembl")
+ getBM(
+  attributes = c("ensembl_gene_id", "external_gene_name"),
+  filters  = "ensembl_gene_id",
+  values   = gene_ids,
+  mart    = ensembl
+ )
 }, silent = TRUE)
+
 if (inherits(annot, "try-error")) {
-  message("[Rmd] biomaRt lookup failed; proceeding without symbols.")
-  annot <- data.frame(ensembl_gene_id = gene_ids, external_gene_name = NA_character_)
+ message("[Rmd] biomaRt lookup failed; proceeding without symbols.")
+ annot <- data.frame(
+  ensembl_gene_id  = gene_ids,
+  external_gene_name = NA_character_
+ )
+} else {
+ # Force sane types
+ annot <- as.data.frame(annot)
+ annot$ensembl_gene_id  <- as.character(annot$ensembl_gene_id)
+ annot$external_gene_name <- as.character(annot$external_gene_name)
 }
 
 # Merge gene symbols
 counts_with_symbols <- as.data.frame(txi$counts)
 counts_with_symbols$ensembl_gene_id <- rownames(counts_with_symbols)
-counts_annotated <- dplyr::left_join(counts_with_symbols, annot, by = "ensembl_gene_id")
+counts_with_symbols$ensembl_gene_id <- as.character(counts_with_symbols$ensembl_gene_id)
 
-# Move gene symbol to front
+counts_annotated <- dplyr::left_join(
+ counts_with_symbols,
+ annot,
+ by = "ensembl_gene_id"
+)
+
 counts_annotated <- counts_annotated %>%
-  dplyr::select(external_gene_name, dplyr::everything(), -ensembl_gene_id) %>%
-  dplyr::rename(gene_symbol = external_gene_name)
-
+ dplyr::select(external_gene_name, dplyr::everything(), -ensembl_gene_id) %>%
+ dplyr::rename(gene_symbol = external_gene_name)
 
 # -----------------------------
 # 6. Save outputs

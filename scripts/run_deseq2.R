@@ -23,6 +23,7 @@ suppressPackageStartupMessages({
   library(rmarkdown)
 })
 
+
 option_list <- list(
   make_option(c("--quant_dir"), type = "character", default = NULL,
               help = "Directory with per-sample Salmon outputs (quant.sf)"),
