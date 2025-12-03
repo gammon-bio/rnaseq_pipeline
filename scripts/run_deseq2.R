@@ -105,11 +105,15 @@ rmd_path <- normalizePath(file.path(script_dir, "..", "tximport_deseq2.rmd"))
 message("[run_deseq2] Rendering: ", rmd_path)
 message("[run_deseq2] Params: ", paste(names(params), unlist(params), sep = "=", collapse = ", "))
 
-rmarkdown::render(
-  input = rmd_path,
-  params = params,
-  envir = new.env(parent = globalenv()),
-  quiet = TRUE
-)
-
-message("[run_deseq2] Done. Outputs under: ", opt$out_dir)
+# Render with proper error handling and output visibility
+tryCatch({
+  rmarkdown::render(
+    input = rmd_path,
+    params = params,
+    envir = new.env(),
+    quiet = FALSE
+  )
+  message("[run_deseq2] Done. Outputs under: ", opt$out_dir)
+}, error = function(e) {
+  stop("[run_deseq2] ERROR during Rmd rendering: ", e$message, call. = FALSE)
+})
