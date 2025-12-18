@@ -41,11 +41,12 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
   - conda activate rnaseq-r
   - Rscript scripts/run_deseq2.R \
       --quant_dir out/salmon \
-      --gtf data/references/gtf/<your>.gtf \
+      --gtf data/references/gtf/<FULL_FILENAME>.gtf \
       --sample_table examples/sample_table.csv \
       --group_col condition \
       --project_name CU25 \
       --padj_thresh 0.05 --lfc_thresh 0.5
+  - **Note:** The `--gtf` flag requires the complete filename including extension (e.g., `Mus_musculus.GRCm39.112.gtf`), not just the directory path. The script will error if only a partial path is provided.
   - Outputs (written by your Rmd under `out/deseq2/`):
     - DE results CSV (e.g., `DESeq2_full_results_*.csv`)
     - Volcano PDF (e.g., `volcano_plot_*.pdf`)

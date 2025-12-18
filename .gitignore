@@ -15,6 +15,14 @@ data/references/*
 .RData
 .DS_Store
 
+# Rendered R Markdown outputs
+*.html
+!examples/*.html
+
+# Project-specific sample info files (keep examples only)
+*_sample_info.csv
+!examples/*_sample_info.csv
+
 # Conda environments
 env/
 .conda/

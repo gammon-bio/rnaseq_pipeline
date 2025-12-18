@@ -103,7 +103,12 @@ script_dir <- if (length(file_arg) == 1) dirname(normalizePath(file_arg)) else g
 rmd_path <- normalizePath(file.path(script_dir, "..", "tximport_deseq2.rmd"))
 
 message("[run_deseq2] Rendering: ", rmd_path)
-message("[run_deseq2] Params: ", paste(names(params), unlist(params), sep = "=", collapse = ", "))
+message("[run_deseq2] Params:")
+param_strings <- sapply(names(params), function(n) {
+  val <- if (is.null(params[[n]])) "NULL" else as.character(params[[n]])
+  paste0("  ", n, " = ", val)
+})
+message(paste(param_strings, collapse = "\n"))
 
 # Render with proper error handling and output visibility
 tryCatch({
