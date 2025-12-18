@@ -8,6 +8,10 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
   - mamba env create -f environment.yml
   - mamba env create -f environment-r.yml
 
+- FOR EXACT REPRODUCIBILITY:
+  - mamba env create -f environment.lock.yml
+  - mamba env create -f environment-r.lock.yml
+
 - Activate CLI env and fetch references:
   - conda activate rnaseq
   - bash scripts/get_refs.sh --species human --build GRCh38
