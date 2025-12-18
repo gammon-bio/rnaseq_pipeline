@@ -200,6 +200,9 @@ ordered_cols <- c("gene_symbol",
                   setdiff(new_count_cols, sample_ids))
 counts_annotated <- counts_annotated[, ordered_cols, drop = FALSE]
 
+# Export raw counts for reference (NOT used for DESeq2 analysis)
+# These CSV files are provided for user reference only
+# DESeq2 analysis uses the tximport object directly to preserve gene-length offsets
 write.csv(counts_annotated, file = file.path(out_dir, paste0(file_prefix, "gene_counts_with_symbols.csv")), row.names = FALSE)
 write.csv(txi$counts, file = file.path(out_dir, paste0(file_prefix, "raw_gene_counts.csv")))
 
@@ -227,50 +230,38 @@ suppressPackageStartupMessages({
 
 ```
 
-# Downloading dataset and cleaning
+# Prepare sample metadata for DESeq2
 
 ```{r}
-# project name prefix for outputs
-name <- project_name
-
-# Read count matrix and sample info
-df <- read.csv(file.path(out_dir, paste0(file_prefix, "gene_counts_with_symbols.csv")), stringsAsFactors=FALSE)
-
-# removing blank rows
-df <- df[df[[1]] != "",]
-
-
-# salmon spits out estimates, which are non-integer counts. DESeq2 requires integer counts. look into alternatives for differential expression. can also load the txi object directly into DESeqDataSetFromTximport
-df <- df %>%
-  mutate(across(where(is.numeric), ~ round(.)))
-
-# sample data import
+# Load sample data
 colData <- read.csv(params$sample_table, row.names = 1)
 
-# separating out the C26 dataset
-df <- df %>%
-  dplyr::select(c("gene_symbol", rownames(colData)))
+# Verify that sample names in txi match sample names in colData
+# The txi column names should already match the sample_ids from the renaming above
+txi_samples <- colnames(txi$counts)
+colData_samples <- rownames(colData)
 
-# removing NA values
-df <- df[!is.na(df$gene_symbol), ]
+if (!all(txi_samples %in% colData_samples)) {
+  warning("Some samples in txi are not in colData. This may cause issues.")
+}
 
-# creating counts matrix with genes as rowname
-counts_data <- df[,-1]
-rownames(counts_data) <- make.unique(as.character(df[[1]]))
+# Reorder colData to match txi (important for DESeq2)
+colData <- colData[txi_samples, , drop = FALSE]
 
-# making sure the row names in colData matches to column names in counts_data
-all(colnames(counts_data) %in% rownames(colData))
-all(colnames(counts_data) == rownames(colData))
+# Verify alignment
+all(colnames(txi$counts) == rownames(colData))
 ```
 
 
 # Contructing a DESeqDataSet object
 
 ```{r}
+message("Creating DESeq2 dataset directly from tximport object (preserves length offsets)")
+
 design_formula <- as.formula(paste("~", params$group_col))
-dds<- DESeqDataSetFromMatrix(countData = counts_data,
-                       colData = colData,
-                       design = design_formula)
+dds <- DESeqDataSetFromTximport(txi,
+                                 colData = colData,
+                                 design = design_formula)
 dds
 
 # pre-filtering: removing rows with low gene counts
