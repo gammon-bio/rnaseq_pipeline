@@ -1,20 +1,16 @@
-# environment.yml (created 2025-09-03)
-# Purpose: CLI tools for RNA-seq pipeline (FastQC, Trimmomatic, Salmon, MultiQC, SRA Toolkit, GNU parallel, pigz, coreutils, bash)
 name: rnaseq
 channels:
   - conda-forge
-  - bioconda
 dependencies:
-  - python=3.11        # for tool CLIs that may need python runtime
-  - fastqc=0.*
-  - trimmomatic=0.*
-  - salmon=1.*
-  - multiqc=1.*
-  - sra-tools
-  - pigz=2.*
-  - coreutils=9.*
-  - bash=5.*
-  - parallel  # GNU parallel (version scheme is date-based)
+  - python=3.11
+  - fastqc=0
+  - trimmomatic=0
+  - salmon
+  - multiqc=1
+  - pigz
+  - coreutils=9
+  - bash=5
+  - parallel
   - curl
   - grep
   - sed
