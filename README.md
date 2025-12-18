@@ -41,6 +41,23 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
   - Custom folder: `bash scripts/rename_fastqs.sh --dir path/to/fastqs`
   - The script converts `_1/_2` to `_R1_001/_R2_001` and normalizes `.fq.gz` to `.fastq.gz`.
 
+### QC Check (Recommended)
+
+After Salmon quantification, verify mapping rates before proceeding to differential expression:
+
+```bash
+python scripts/check_salmon_qc.py --salmon_dir out/salmon --min_mapping 0.6
+```
+
+Options:
+- `--salmon_dir`: Path to Salmon output directory (default: `out/salmon`)
+- `--min_mapping`: Minimum mapping rate threshold as decimal (default: `0.6` = 60%)
+- `--out`: Optional path to save summary file (e.g., `--out out/salmon_qc_summary.txt`)
+
+Samples below the mapping rate threshold will be flagged. **Remove failed samples from your `sample_table.csv` before running DESeq2.** The script exits with code 1 if any samples fail, allowing use in automated pipelines.
+
+> **Note:** Low mapping rates (<50%) often indicate reference mismatch, adapter contamination, or sample quality issues. Check the MultiQC report for diagnostic details before excluding samples.
+
 - Activate R env and run DESeq2 wrapper (renders your Rmd headlessly):
   - conda activate rnaseq-r
   - Rscript scripts/run_deseq2.R \
@@ -99,6 +116,10 @@ This repository packages your working Salmon quantification and DESeq2 downstrea
   - `out/fastqc_trimmed/`: FastQC reports on trimmed reads.
   - `out/multiqc/`: MultiQC summary (`multiqc_report.html`) aggregating FastQC and Trimmomatic logs.
   - `out/salmon/<sample>/`: Salmon quantification per sample (`quant.sf`, `lib_format_counts.json`, `meta_info.json`).
+
+- After running the QC check (`scripts/check_salmon_qc.py`):
+  - Terminal output showing pass/fail status for each sample
+  - Optional summary file if `--out` flag is used
 
 - After running the DESeq2 wrapper (`scripts/run_deseq2.R`):
   - `out/deseq2/<PROJECT>_DESeq2_full_results.csv`: Per‑gene statistics (baseMean, log2FC, p-value, padj).

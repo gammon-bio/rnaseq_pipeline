@@ -99,9 +99,6 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "trim" ]]; then
 
   echo "[50%] FastQC (trimmed)"
   fastqc -t "${THREADS}" -o "${FASTQC_TRIM_DIR}" "${TRIMMED_DIR}"/*_trimmed.fastq.gz
-
-  echo "[60%] MultiQC summary"
-  multiqc "${OUT_DIR}" "${LOGS_DIR}" -o "${MULTIQC_DIR}"
 fi
 
 # 7) Salmon index & quantification
@@ -118,11 +115,11 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "salmon" ]]; then
   fi
 
   if [[ ! -d "${SALMON_INDEX}" ]]; then
-    echo "[80%] Salmon index"
+    echo "[70%] Salmon index"
     salmon index -t "${REF_FASTA}" -i "${SALMON_INDEX}" -p "${THREADS}"
   fi
 
-  echo "[90%] Salmon quant"
+  echo "[80%] Salmon quant"
   for R1 in "${TRIMMED_DIR}"/*_R1_trimmed.fastq.gz; do
     [[ -e "$R1" ]] || { echo "No trimmed reads found in ${TRIMMED_DIR}" >&2; break; }
     SAMPLE=$(basename "$R1" _R1_trimmed.fastq.gz)
@@ -135,6 +132,10 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "salmon" ]]; then
       -o "${SALMON_OUT_DIR}/${SAMPLE}"
   done
 fi
+
+# 8) Final MultiQC (captures FastQC, Trimmomatic, AND Salmon)
+echo "[95%] MultiQC summary"
+multiqc "${FASTQC_RAW_DIR}" "${FASTQC_TRIM_DIR}" "${SALMON_OUT_DIR}" "${LOGS_DIR}" -o "${MULTIQC_DIR}" --force
 
 echo "[100%] Done"
 echo "  • FastQC (raw):     ${FASTQC_RAW_DIR}"
