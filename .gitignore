@@ -28,3 +28,5 @@ env/
 .conda/
 conda_envs/
 .mamba/
+environment.lock.yml
+environment-r.lock.yml
