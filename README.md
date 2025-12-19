@@ -1,36 +1,72 @@
-# Salmon + DESeq2 Pipeline (with your Rmd logic)
+# Salmon + DESeq2 Pipeline 
 
 This repository packages your working Salmon quantification and DESeq2 downstream analysis into a reproducible, GitHub-ready layout with minimal, surgical changes. Your original analysis logic (volcano, enrichment, etc.) remains intact inside `tximport_deseq2.rmd`; the only additions are parameters for input/output paths and thresholds so it can be run headlessly.
 
 ## Quickstart
 
-- Create environments (CLI tools and R):
-  - mamba env create -f environment.yml
-  - mamba env create -f environment-r.yml
+**1. Create environments (CLI tools and R):**
 
-- FOR EXACT REPRODUCIBILITY:
-  - mamba env create -f environment.lock.yml
-  - mamba env create -f environment-r.lock.yml
+For latest versions:
+```bash
+mamba env create -f environment.yml
+mamba env create -f environment-r.yml
+```
 
-- Activate CLI env and fetch references:
-  - conda activate rnaseq
-  - bash scripts/get_refs.sh --species human --build GRCh38
-    - For mouse: `--species mouse --build GRCm39`
-    - To pin Ensembl release: `--release 110`
-    - Or pass explicit URLs: `--gtf_url ... --fasta_url ...`
+For exact reproducibility:
+```bash
+mamba env create -f environment.lock.yml
+mamba env create -f environment-r.lock.yml
+```
 
-- Run the Salmon pipeline (raw QC → trim → trimmed QC → MultiQC → quant):
-  - bash salmon_pipeline.sh all
-  - To use multiple CPU cores (example: 8 cores):
-    - THREADS=8 bash salmon_pipeline.sh all
-  - Inputs: `data/fastq/` with `*_R1_001.fastq.gz` and `*_R2_001.fastq.gz`
-  - Outputs:
-    - out/fastqc_raw/
-    - out/trimmed/
-    - out/fastqc_trimmed/
-    - out/multiqc/
-    - out/salmon/<sample>/ (quant.sf)
-    - logs/
+**2. Fetch reference genome and transcriptome:**
+
+Activate the CLI environment and download references:
+```bash
+conda activate rnaseq
+bash scripts/get_refs.sh --species human --build GRCh38
+```
+
+For mouse data:
+```bash
+bash scripts/get_refs.sh --species mouse --build GRCm39
+```
+
+To pin a specific Ensembl release (e.g., release 110):
+```bash
+bash scripts/get_refs.sh --species human --build GRCh38 --release 110
+```
+
+Or pass explicit GTF/FASTA URLs:
+```bash
+bash scripts/get_refs.sh --gtf_url https://... --fasta_url https://...
+```
+
+**3. Prepare FASTQs and run Salmon pipeline:**
+
+Place your paired-end reads in `data/fastq/` with naming: `<SAMPLE>_R1_001.fastq.gz` and `<SAMPLE>_R2_001.fastq.gz`
+
+If your files follow SRA naming convention (`SAMPLE_1.fastq.gz` or `SAMPLE_1.fq.gz`), standardize them first:
+```bash
+bash scripts/rename_fastqs.sh
+```
+
+Run the full Salmon pipeline (raw QC → trim → trimmed QC → MultiQC → quant):
+```bash
+bash salmon_pipeline.sh all
+```
+
+To use multiple CPU cores (example: 8 cores):
+```bash
+THREADS=8 bash salmon_pipeline.sh all
+```
+
+Pipeline outputs:
+- `out/fastqc_raw/` — FastQC reports for raw reads
+- `out/trimmed/` — Trimmed read pairs
+- `out/fastqc_trimmed/` — FastQC reports on trimmed reads
+- `out/multiqc/` — MultiQC summary report
+- `out/salmon/<sample>/` — Salmon quantification (quant.sf)
+- `logs/` — Pipeline logs
 
 ### FASTQ Naming and Renaming
 
@@ -58,22 +94,49 @@ Samples below the mapping rate threshold will be flagged. **Remove failed sample
 
 > **Note:** Low mapping rates (<50%) often indicate reference mismatch, adapter contamination, or sample quality issues. Check the MultiQC report for diagnostic details before excluding samples.
 
-- Activate R env and run DESeq2 wrapper (renders your Rmd headlessly):
-  - conda activate rnaseq-r
-  - Rscript scripts/run_deseq2.R \
-      --quant_dir out/salmon \
-      --gtf data/references/gtf/<FULL_FILENAME>.gtf \
-      --sample_table examples/sample_table.csv \
-      --group_col condition \
-      --project_name CU25 \
-      --padj_thresh 0.05 --lfc_thresh 0.5
-  - **Note:** The `--gtf` flag requires the complete filename including extension (e.g., `Mus_musculus.GRCm39.112.gtf`), not just the directory path. The script will error if only a partial path is provided.
-  - Outputs (written by your Rmd under `out/deseq2/`):
-    - DE results CSV (e.g., `DESeq2_full_results_*.csv`)
-    - Volcano PDF (e.g., `volcano_plot_*.pdf`)
-    - PCA PDF (e.g., `PCA_plot_*.pdf`)
-    - VST normalized counts CSV (e.g., `vst_norm_counts_*.csv`)
-    - Up/Down enrichment Excel files if your Rmd writes them
+**4. Run differential expression analysis with DESeq2:**
+
+Activate the R environment and run the DESeq2 wrapper:
+```bash
+conda activate rnaseq-r
+Rscript scripts/run_deseq2.R \
+  --quant_dir out/salmon \
+  --gtf data/references/gtf/Homo_sapiens.GRCh38.115.gtf \
+  --sample_table examples/sample_table.csv \
+  --group_col condition \
+  --project_name MyProject \
+  --padj_thresh 0.05 \
+  --lfc_thresh 0.5
+```
+
+For mouse data:
+```bash
+Rscript scripts/run_deseq2.R \
+  --quant_dir out/salmon \
+  --gtf data/references/gtf/Mus_musculus.GRCm39.112.gtf \
+  --sample_table examples/sample_table.csv \
+  --group_col condition \
+  --project_name MyProject \
+  --padj_thresh 0.05 \
+  --lfc_thresh 0.5
+```
+
+**Important:** The `--gtf` flag requires the complete filename including extension (e.g., `Homo_sapiens.GRCh38.115.gtf`), not just the directory path.
+
+### DESeq2 outputs
+
+All outputs are written to `out/deseq2/` with your `--project_name` as prefix:
+
+- `<PROJECT>_DESeq2_full_results.csv` — Full DE results with gene symbols (baseMean, log2FC, p-value, padj)
+- `<PROJECT>_volcano_plot.pdf` — Volcano plot with significant genes labeled
+- `<PROJECT>_PCA_plot.pdf` — PCA plot on VST-transformed counts
+- `<PROJECT>_vst_norm_counts.csv` — VST-normalized counts with gene symbols
+- `<PROJECT>_gene_counts_with_symbols.csv` — Raw counts with gene symbols
+- `<PROJECT>_raw_gene_counts.csv` — Raw counts (Ensembl IDs only)
+- `<PROJECT>_Upregulated_cachexia_Enrichment_results.xlsx` — Gene enrichment for upregulated genes
+- `<PROJECT>_Downregulated_cachexia_Enrichment_results.xlsx` — Gene enrichment for downregulated genes
+
+**Note:** Gene symbols are automatically detected based on your GTF file (human vs mouse) and merged into all count matrices and results tables.
 
 ## References retrieval (scripts/get_refs.sh)
 
@@ -92,21 +155,70 @@ Samples below the mapping rate threshold will be flagged. **Remove failed sample
 
 ## Optional: Test Dataset (GSE52778)
 
-- Fetch example FASTQs into `data/fastq/`:
-  - You can either provide the SRR run numbers directly, or let the script resolve them from the GEO accession:
-    - Direct runs: `bash scripts/fetch_test_fastqs.sh --runs SRR1039508,SRR1039509,SRR1039512,SRR1039513`
-    - From GEO:   `bash scripts/fetch_test_fastqs.sh --geo GSE52778`
-  - Options:
-    - `--method sra-tools|ena|auto` (default: sra-tools)
-    - `--threads N` to set SRA Tools threads (default from `THREADS` env or 4)
-    - `--out data/fastq` to change output directory
-    - `--geo GSE52778` if using a different GEO accession with known SRR numbers
-  - Notes:
-    - Default uses SRA Toolkit (`fasterq-dump`); outputs are compressed to `.fastq.gz` (uses `pigz` if available, else `gzip`). Install with: `mamba install -c bioconda sra-tools`.
-    - `--method ena` fetches from ENA using `curl` and resumes partial downloads (`-C -`).
-    - `--method auto` tries ENA first and falls back to SRA Tools if ENA links are unavailable.
-    - If your files are named with `_1/_2`, run `bash scripts/rename_fastqs.sh` to standardize to `_R1_001/_R2_001` before the pipeline.
-    - SRA Tools check: `fasterq-dump --version` should print a version. `environment.yml` includes `sra-tools`.
+GSE52778 is a human airway smooth muscle cell dataset with 4 samples (2 controls + 2 treatments). Perfect for testing the full pipeline end-to-end.
+
+### Fetch test FASTQs
+
+**Option 1: Fetch by GEO accession (automatic run resolution):**
+```bash
+conda activate rnaseq
+bash scripts/fetch_test_fastqs.sh --geo GSE52778
+```
+
+**Option 2: Fetch specific SRR runs directly:**
+```bash
+bash scripts/fetch_test_fastqs.sh --runs SRR1039508,SRR1039509,SRR1039512,SRR1039513
+```
+
+**Option 3: Use ENA instead of SRA Toolkit (faster, curl-based):**
+```bash
+bash scripts/fetch_test_fastqs.sh --geo GSE52778 --method ena
+```
+
+**Option 4: Use multiple threads with SRA Toolkit:**
+```bash
+bash scripts/fetch_test_fastqs.sh --geo GSE52778 --method sra-tools --threads 8
+```
+
+### Download methods explained
+
+- `--method sra-tools` (default): Uses SRA Toolkit's `fasterq-dump`. Requires: `mamba install -c bioconda sra-tools`
+- `--method ena`: Fetches from ENA using curl (faster, resumes with `-C -`). No additional tools needed.
+- `--method auto`: Tries ENA first, falls back to SRA Toolkit if ENA links unavailable.
+
+### Other fetch options
+
+- `--out <SUBDIR>`: Output to specific subdirectory under `data/fastq/` (default: `data/fastq/`)
+- `--parallel N`: Number of concurrent downloads (default: 4)
+- `--threads N`: Number of SRA Toolkit threads (default: 4 or `THREADS` env var)
+
+### After downloading FASTQs
+
+FASTQs from GSE52778 come in correct naming format. Continue with the pipeline:
+
+```bash
+THREADS=8 bash salmon_pipeline.sh all
+```
+
+Then check Salmon mapping rates:
+
+```bash
+conda activate rnaseq
+python scripts/check_salmon_qc.py --salmon_dir out/salmon --min_mapping 0.6
+```
+
+Finally, run DESeq2 analysis with the provided sample table:
+
+```bash
+conda activate rnaseq-r
+Rscript scripts/run_deseq2.R \
+  --quant_dir out/salmon \
+  --gtf data/references/gtf/Homo_sapiens.GRCh38.115.gtf \
+  --sample_table examples/sample_table.csv \
+  --group_col condition \
+  --project_name GSE52778_test \
+  --padj_thresh 0.05 --lfc_thresh 0.5
+```
 
 ## Expected Outputs
 
@@ -175,22 +287,179 @@ Samples below the mapping rate threshold will be flagged. **Remove failed sample
 
 ## Repository layout
 
-- salmon_pipeline/
-  - README.md, LICENSE, .gitignore
-  - environment.yml (CLI), environment-r.yml (R)
-  - salmon_pipeline.sh
-  - tximport_deseq2.rmd
-  - scripts/
-    - get_refs.sh
-    - run_deseq2.R
-  - data/
-    - fastq/ (place raw FASTQs here)
-    - references/ (created by get_refs.sh)
-  - out/ (pipeline outputs)
-  - examples/
-    - sample_table.csv
+```
+.
+├── README.md, LICENSE, .gitignore
+├── environment.yml (CLI dependencies)
+├── environment-r.yml (R dependencies)
+├── environment.lock.yml (pinned CLI versions)
+├── environment-r.lock.yml (pinned R versions)
+│
+├── salmon_pipeline.sh (main pipeline orchestrator)
+├── tximport_deseq2.rmd (DESeq2 analysis Rmarkdown)
+│
+├── scripts/
+│   ├── get_refs.sh (download Ensembl references)
+│   ├── fetch_test_fastqs.sh (fetch FASTQs from GEO/SRA)
+│   ├── rename_fastqs.sh (standardize FASTQ naming)
+│   ├── check_salmon_qc.py (verify Salmon mapping rates)
+│   ├── run_deseq2.R (wrapper for DESeq2 analysis)
+│   └── debug_deseq2.R (utility script)
+│
+├── data/
+│   ├── fastq/ (place raw paired-end FASTQs here)
+│   └── references/ (created by get_refs.sh)
+│       ├── gtf/ (GTF files)
+│       └── fa/ (FASTA cDNA files)
+│
+├── out/ (pipeline outputs)
+│   ├── fastqc_raw/
+│   ├── trimmed/
+│   ├── fastqc_trimmed/
+│   ├── multiqc/
+│   ├── salmon/
+│   └── deseq2/
+│
+├── logs/ (FastQC and Trimmomatic logs)
+│
+└── examples/
+    └── sample_table.csv (example metadata)
+```
+
+## Scripts and utilities
+
+### scripts/fetch_test_fastqs.sh
+
+Downloads FASTQs from NCBI GEO/SRA. Resolves GEO accessions (GSE) → SRA projects (SRP) → run accessions (SRR).
+
+**Key features:**
+- Automatic GEO accession resolution via NCBI GEO and ENA APIs
+- Multiple download backends: SRA Toolkit, ENA (curl), or auto-fallback
+- Parallel downloads with configurable thread/job count
+- MD5 checksum verification (when available)
+- Automatic gzip compression with `pigz` or `gzip`
+
+**Usage examples:**
+```bash
+# From GEO accession (auto-resolves to SRR runs)
+bash scripts/fetch_test_fastqs.sh --geo GSE52778
+
+# Specific SRR runs
+bash scripts/fetch_test_fastqs.sh --runs SRR1039508,SRR1039509,SRR1039512,SRR1039513
+
+# Custom output directory
+bash scripts/fetch_test_fastqs.sh --geo GSE52778 --out data/fastq/myrun
+
+# Parallel downloads with ENA
+bash scripts/fetch_test_fastqs.sh --geo GSE52778 --method ena --parallel 8
+```
+
+### scripts/get_refs.sh
+
+Downloads Ensembl GTF and cDNA FASTA files for Salmon index building.
+
+**Key features:**
+- Supports human (GRCh38) and mouse (GRCm39) genomes
+- Optional Ensembl release pinning (default: latest)
+- Direct GTF flavor selection (default: auto-prefer plain GTF)
+- Automatic decompression
+- SHA256 checksums written to `data/references/README.md`
+
+**Usage examples:**
+```bash
+# Human (default)
+bash scripts/get_refs.sh --species human --build GRCh38
+
+# Mouse
+bash scripts/get_refs.sh --species mouse --build GRCm39
+
+# Specific release
+bash scripts/get_refs.sh --species human --build GRCh38 --release 110
+
+# Explicit URLs
+bash scripts/get_refs.sh --gtf_url https://... --fasta_url https://...
+```
+
+### scripts/rename_fastqs.sh
+
+Standardizes FASTQ file naming from SRA-style (`SAMPLE_1.fastq.gz`, `SAMPLE_1.fq.gz`) to pipeline-expected format (`SAMPLE_R1_001.fastq.gz`).
+
+**Key features:**
+- Converts `_1/_2` to `_R1_001/_R2_001`
+- Normalizes `.fq.gz` to `.fastq.gz`
+- Dry-run mode to preview changes
+- Custom directory support
+
+**Usage examples:**
+```bash
+# Preview changes
+bash scripts/rename_fastqs.sh --dry-run
+
+# Apply changes
+bash scripts/rename_fastqs.sh
+
+# Custom folder
+bash scripts/rename_fastqs.sh --dir /path/to/fastqs
+```
+
+### scripts/check_salmon_qc.py
+
+Validates Salmon mapping rates against a minimum threshold. Useful for QC filtering before DESeq2.
+
+**Key features:**
+- Per-sample mapping rate reporting
+- Pass/fail status based on threshold
+- Optional summary file export
+- Exit code 1 if any samples fail (suitable for CI/CD)
+
+**Usage examples:**
+```bash
+# Check with 60% threshold
+python scripts/check_salmon_qc.py --salmon_dir out/salmon --min_mapping 0.6
+
+# Save summary
+python scripts/check_salmon_qc.py --salmon_dir out/salmon --min_mapping 0.6 --out qc_summary.txt
+
+# Strict threshold (80%)
+python scripts/check_salmon_qc.py --salmon_dir out/salmon --min_mapping 0.8
+```
+
+### scripts/run_deseq2.R
+
+Wrapper around `tximport_deseq2.rmd` for headless DESeq2 analysis. Handles GTF processing, tximport, and differential expression.
+
+**Key features:**
+- Automatic species detection (human vs mouse) for biomaRt annotation
+- Gene symbol annotation from biomaRt (Ensembl → HGNC/MGI)
+- All count matrices include gene symbols
+- Volcano plots with labeled top genes
+- Gene enrichment analysis (KEGG, GO, Reactome, etc.)
+- Configurable p-value and log2FC thresholds
+
+**Usage examples:**
+```bash
+# Basic human analysis
+Rscript scripts/run_deseq2.R \
+  --quant_dir out/salmon \
+  --gtf data/references/gtf/Homo_sapiens.GRCh38.115.gtf \
+  --sample_table examples/sample_table.csv \
+  --group_col condition \
+  --project_name MyProject
+
+# Custom thresholds
+Rscript scripts/run_deseq2.R \
+  --quant_dir out/salmon \
+  --gtf data/references/gtf/Homo_sapiens.GRCh38.115.gtf \
+  --sample_table examples/sample_table.csv \
+  --group_col condition \
+  --project_name MyProject \
+  --padj_thresh 0.01 \
+  --lfc_thresh 1.0 \
+  --out_dir results/deseq2
+```
 
 ## Backward compatibility
 
 - `salmon_pipeline.sh` keeps your original entrypoint and step flag (`all|qc|trim|salmon`). It now logs progress with percentages and writes outputs to `out/` subfolders. MultiQC is pointed at FastQC outputs and Trimmomatic logs under `logs/` so it picks them up.
 - `tximport_deseq2.rmd` is unchanged in analysis logic; only parameters were added for file paths and thresholds so your exact volcano and enrichment code is preserved.
+- Gene annotation is now automatic: species (human/mouse) is detected from GTF filename, eliminating manual configuration.
