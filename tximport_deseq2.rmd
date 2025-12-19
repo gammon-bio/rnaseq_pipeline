@@ -378,11 +378,20 @@ ggsave(file.path(out_dir, paste0(file_prefix, "volcano_plot.pdf")),
 vsd <- vst(dds, blind = FALSE)
 plotPCA(vsd, intgroup = params$group_col)
 
-write.csv(assay(vsd), file = file.path(out_dir, paste0(file_prefix, "vst_norm_counts.csv")))
+# Add gene symbols to VST normalized counts
+vst_counts <- as.data.frame(assay(vsd))
+vst_counts$ensembl_gene_id <- rownames(vst_counts)
+vst_counts <- dplyr::left_join(vst_counts, annot, by = "ensembl_gene_id")
+vst_counts <- vst_counts %>%
+  dplyr::select(ensembl_gene_id, external_gene_name, dplyr::everything())
 
-pca_plot <- plotPCA(vsd, intgroup = params$group_col)+ stat_ellipse(linetype = 3)
+write.csv(vst_counts,
+          file = file.path(out_dir, paste0(file_prefix, "vst_norm_counts.csv")),
+          row.names = FALSE)
 
-ggsave(file.path(out_dir, paste0(file_prefix, "PCA_plot.pdf")), 
+pca_plot <- plotPCA(vsd, intgroup = params$group_col) + stat_ellipse(linetype = 3)
+
+ggsave(file.path(out_dir, paste0(file_prefix, "PCA_plot.pdf")),
        plot = pca_plot,
        device = pdf,
        width = 7,
