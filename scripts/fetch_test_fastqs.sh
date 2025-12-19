@@ -97,29 +97,53 @@ resolve_runs_from_geo() {
     err "Invalid GEO accession format: ${acc} (should be GSExxxxx)"
     return 1
   fi
-  # URL encode the accession
-  local encoded_acc
-  encoded_acc=$(printf '%s' "$acc" | sed 's/[^[:alnum:]]/%&/g')
-  local url="https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?save=efetch&db=sra&rettype=runinfo&term=${encoded_acc}"
-  local tmp
-  tmp="$(mktemp)"
-  log "Resolving SRR runs from GEO via SRA RunInfo: ${acc}"
-  if ! curl -fsSL -o "$tmp" "$url"; then
-    rm -f "$tmp"
-    err "Failed to retrieve SRA RunInfo CSV for ${acc}."
+
+  log "Resolving SRR runs from GEO: ${acc}"
+
+  # Step 1: Get SRP accession from GEO
+  local geo_url="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${acc}&targ=self&form=text&view=quick"
+  local tmp_geo tmp_ena
+  tmp_geo="$(mktemp)"
+
+  if ! curl -fsSL -o "$tmp_geo" "$geo_url"; then
+    rm -f "$tmp_geo"
+    err "Failed to retrieve GEO record for ${acc}."
     return 1
   fi
-  # Extract 'Run' column index safely
-  local header col idx
-  header="$(head -n1 "$tmp" | tr -d '\r')"
-  idx=$(awk -F',' '{for(i=1;i<=NF;i++){if($i=="Run"){print i; exit}}}' <<< "$header")
-  if [[ -z "$idx" ]]; then
-    rm -f "$tmp"
-    err "Run column not found in RunInfo for ${acc}."
+
+  # Extract SRP accession from GEO record
+  local srp
+  srp=$(grep -i "Series_relation.*SRA.*SRP" "$tmp_geo" | grep -oE 'SRP[0-9]+' | head -n1)
+  rm -f "$tmp_geo"
+
+  if [[ -z "$srp" ]]; then
+    err "No SRA project (SRP) found for ${acc}. This GEO series may not have sequencing data."
     return 1
   fi
-  awk -F',' -v c="$idx" 'NR>1 && $c!="" {print $c}' "$tmp" | tr -d '\r' | sort -u
-  rm -f "$tmp"
+
+  log "Found SRA project: ${srp}"
+
+  # Step 2: Get run accessions from ENA using the SRP
+  local ena_url="https://www.ebi.ac.uk/ena/portal/api/filereport?accession=${srp}&result=read_run&fields=run_accession&format=tsv"
+  tmp_ena="$(mktemp)"
+
+  if ! curl -fsSL -o "$tmp_ena" "$ena_url"; then
+    rm -f "$tmp_ena"
+    err "Failed to retrieve run list from ENA for ${srp}."
+    return 1
+  fi
+
+  # Extract run accessions (skip header)
+  local runs
+  runs=$(tail -n +2 "$tmp_ena" | tr -d '\r' | sort -u)
+  rm -f "$tmp_ena"
+
+  if [[ -z "$runs" ]]; then
+    err "No runs found for ${srp}."
+    return 1
+  fi
+
+  echo "$runs"
 }
 
 download_run_via_ena() {

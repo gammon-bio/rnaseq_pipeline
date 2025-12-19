@@ -100,9 +100,20 @@ suppressPackageStartupMessages(library(biomaRt))
 
 gene_ids <- rownames(txi$counts)
 
+# Auto-detect species from GTF filename
+dataset_name <- if (grepl("Homo_sapiens|GRCh", gtf_file, ignore.case = TRUE)) {
+  "hsapiens_gene_ensembl"
+} else if (grepl("Mus_musculus|GRCm", gtf_file, ignore.case = TRUE)) {
+  "mmusculus_gene_ensembl"
+} else {
+  warning("[Rmd] Cannot auto-detect species from GTF filename. Defaulting to human.")
+  "hsapiens_gene_ensembl"
+}
+
+message("[Rmd] Using biomaRt dataset: ", dataset_name)
+
 annot <- try({
- # You are using mouse, so use mmusculus here, not hsapiens
- ensembl <- useEnsembl(biomart = "genes", dataset = "mmusculus_gene_ensembl")
+ ensembl <- useEnsembl(biomart = "genes", dataset = dataset_name)
  getBM(
   attributes = c("ensembl_gene_id", "external_gene_name"),
   filters  = "ensembl_gene_id",
@@ -289,9 +300,14 @@ res
 # saving DEGs to data table for further analysis and saving data_table to csv
 res_df <- as.data.frame(res)
 
+# Add gene symbols to results (merge annotation created earlier)
+res_df$ensembl_gene_id <- rownames(res_df)
+res_df <- dplyr::left_join(res_df, annot, by = "ensembl_gene_id")
+res_df <- res_df %>% dplyr::select(ensembl_gene_id, external_gene_name, dplyr::everything())
+
 write.csv(res_df,
           file = file.path(out_dir, paste0(file_prefix, "DESeq2_full_results.csv")),
-          row.names = TRUE)
+          row.names = FALSE)
 ```
 
 # Explore results
@@ -323,16 +339,21 @@ suppressPackageStartupMessages({
   library(ggrepel)
 })
 
-# Prepare dataframe
-res_df$gene <- rownames(res_df)
-
 # Add column to specify up vs downregulated
 res_df$diffexpressed <- "NO"
 res_df$diffexpressed[res_df$log2FoldChange >  lfc_thresh & res_df$padj < padj_thresh] <- "Up"
 res_df$diffexpressed[res_df$log2FoldChange < -lfc_thresh & res_df$padj < padj_thresh] <- "Down"
 
-# Gene labels (top 30)
-res_df$delabel <- ifelse(res_df$gene %in% head(res_df[order(res_df$padj), "gene"], 30), res_df$gene, NA)
+# Gene labels (top 30) - use gene symbols if available, otherwise Ensembl ID
+res_df$delabel <- NA
+top_genes <- head(res_df[order(res_df$padj), ], 30)
+for (i in seq_len(nrow(top_genes))) {
+  if (!is.na(top_genes$external_gene_name[i]) && top_genes$external_gene_name[i] != "") {
+    res_df$delabel[rownames(res_df) == rownames(top_genes)[i]] <- top_genes$external_gene_name[i]
+  } else {
+    res_df$delabel[rownames(res_df) == rownames(top_genes)[i]] <- top_genes$ensembl_gene_id[i]
+  }
+}
 
 volcano_plot <- ggplot(data=res_df, aes(x= log2FoldChange, y=-log10(padj), col = diffexpressed, label = delabel)) +
   geom_vline(xintercept = c(-lfc_thresh, lfc_thresh), col = "gray", linetype = "dashed")+
@@ -387,8 +408,11 @@ goi <- res_df %>%
   dplyr::filter(padj < padj_thresh, log2FoldChange > 1.5) %>%
   dplyr::slice_min(order_by = padj, n = 200)
 
-# Extracting gene list as character vector
-genes <- as.character(goi$gene)
+# Extracting gene list as character vector (use symbols if available, otherwise Ensembl IDs)
+genes <- ifelse(!is.na(goi$external_gene_name) & goi$external_gene_name != "",
+                goi$external_gene_name,
+                goi$ensembl_gene_id)
+genes <- as.character(genes)
 
 # Enrichment
 edb<- enrichr(genes, db)
@@ -416,8 +440,11 @@ goi <- res_df %>%
   dplyr::filter(padj < padj_thresh, log2FoldChange < -1.5) %>%
   dplyr::slice_min(order_by = padj, n = 200)
 
-# Extracting gene list as character vector
-genes <- as.character(goi$gene)
+# Extracting gene list as character vector (use symbols if available, otherwise Ensembl IDs)
+genes <- ifelse(!is.na(goi$external_gene_name) & goi$external_gene_name != "",
+                goi$external_gene_name,
+                goi$ensembl_gene_id)
+genes <- as.character(genes)
 
 # Enrichment
 edb<- enrichr(genes, db)
