@@ -71,6 +71,7 @@ Pipeline outputs:
 ### FASTQ Naming and Renaming
 
 - Expected naming for paired-end reads: `<SAMPLE>_R1_001.fastq.gz` and `<SAMPLE>_R2_001.fastq.gz` in `data/fastq/`.
+  - Note: FastQC will accept any .fastq.gz, BUT trimming only processes _R1_001.fastq.gz so failure to name properly may cause unexpected performance
 - If your files are SRA-style (e.g., `SAMPLE_1.fastq.gz` / `SAMPLE_2.fastq.gz` or `.fq.gz`), use the helper script to standardize names:
   - Preview changes: `bash scripts/rename_fastqs.sh --dry-run`
   - Apply changes: `bash scripts/rename_fastqs.sh`
