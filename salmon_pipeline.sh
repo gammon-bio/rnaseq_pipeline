@@ -55,10 +55,18 @@ mkdir -p \
   "${SALMON_OUT_DIR}" \
   "${LOGS_DIR}"
 
-# 4) Checks
-if [[ "$START_STEP" != "qc" && ! -d "$RAW_DIR" ]]; then
-  echo "ERROR: Input FASTQ folder not found: $RAW_DIR" >&2
-  exit 1
+# 4) Validate input directories based on mode
+if [[ "$START_STEP" == "all" || "$START_STEP" == "trim" ]]; then
+  if [[ ! -d "$RAW_DIR" ]]; then
+    echo "ERROR: Input FASTQ folder not found: $RAW_DIR" >&2
+    exit 1
+  fi
+elif [[ "$START_STEP" == "salmon" ]]; then
+  if [[ ! -d "$TRIMMED_DIR" ]]; then
+    echo "ERROR: Trimmed reads folder not found: $TRIMMED_DIR" >&2
+    echo "Run 'bash salmon_pipeline.sh trim' first, or place trimmed reads in ${TRIMMED_DIR}" >&2
+    exit 1
+  fi
 fi
 
 echo "[05%] Setup complete"
@@ -66,16 +74,37 @@ echo "[05%] Setup complete"
 # 5) FastQC on raw reads
 if [[ "$START_STEP" == "all" || "$START_STEP" == "qc" ]]; then
   echo "[15%] FastQC (raw)"
-  fastqc -t "${THREADS}" -o "${FASTQC_RAW_DIR}" "${RAW_DIR}"/*.fastq.gz
+  RAW_FASTQS=( "${RAW_DIR}"/*.fastq.gz )
+  if [[ ! -f "${RAW_FASTQS[0]:-}" ]]; then
+    echo "ERROR: No .fastq.gz files found in ${RAW_DIR}" >&2
+    exit 1
+  fi
+  fastqc -t "${THREADS}" -o "${FASTQC_RAW_DIR}" "${RAW_FASTQS[@]}"
 fi
 
 # 6) Trim + FastQC (trimmed) + MultiQC
 if [[ "$START_STEP" == "all" || "$START_STEP" == "trim" ]]; then
   echo "[35%] Trimmomatic"
-  ADAPTER_FILE=( "${CONDA_PREFIX:-}"/share/trimmomatic-*/adapters/TruSeq3-PE.fa )
-  if [[ ! -f "${ADAPTER_FILE[0]}" ]]; then
-    echo "WARNING: Adapter file not found in conda env; using default name TruSeq3-PE.fa if available in CWD." >&2
+
+  # Find adapter file - check conda env first, then common locations
+  ADAPTER_FILE=""
+  CONDA_ADAPTER=( "${CONDA_PREFIX:-}"/share/trimmomatic-*/adapters/TruSeq3-PE.fa )
+
+  if [[ -f "${CONDA_ADAPTER[0]:-}" ]]; then
+    ADAPTER_FILE="${CONDA_ADAPTER[0]}"
+  elif [[ -f "TruSeq3-PE.fa" ]]; then
+    ADAPTER_FILE="TruSeq3-PE.fa"
+  elif [[ -f "${PROJECT_DIR}/adapters/TruSeq3-PE.fa" ]]; then
+    ADAPTER_FILE="${PROJECT_DIR}/adapters/TruSeq3-PE.fa"
+  else
+    echo "ERROR: Adapter file TruSeq3-PE.fa not found in:" >&2
+    echo "  - Conda env: ${CONDA_PREFIX:-'(not set)'}/share/trimmomatic-*/adapters/" >&2
+    echo "  - Current directory" >&2
+    echo "  - ${PROJECT_DIR}/adapters/" >&2
+    echo "Please install trimmomatic via conda or provide TruSeq3-PE.fa" >&2
+    exit 1
   fi
+  echo "Using adapter file: ${ADAPTER_FILE}"
 
   for R1 in "${RAW_DIR}"/*_R1_001.fastq.gz; do
     [[ -e "$R1" ]] || { echo "No FASTQs found in ${RAW_DIR}" >&2; break; }
@@ -92,13 +121,18 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "trim" ]]; then
       "${TRIMMED_DIR}/${SAMPLE}_R1_unpaired.fastq.gz" \
       "${TRIMMED_DIR}/${SAMPLE}_R2_trimmed.fastq.gz" \
       "${TRIMMED_DIR}/${SAMPLE}_R2_unpaired.fastq.gz" \
-      ILLUMINACLIP:"${ADAPTER_FILE[0]:-TruSeq3-PE.fa}":2:30:10 \
+      ILLUMINACLIP:"${ADAPTER_FILE}":2:30:10 \
       LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 \
       2> "${LOGS_DIR}/trimmomatic_${SAMPLE}.log"
   done
 
   echo "[50%] FastQC (trimmed)"
-  fastqc -t "${THREADS}" -o "${FASTQC_TRIM_DIR}" "${TRIMMED_DIR}"/*_trimmed.fastq.gz
+  TRIMMED_FASTQS=( "${TRIMMED_DIR}"/*_trimmed.fastq.gz )
+  if [[ ! -f "${TRIMMED_FASTQS[0]:-}" ]]; then
+    echo "ERROR: No trimmed .fastq.gz files found in ${TRIMMED_DIR}" >&2
+    exit 1
+  fi
+  fastqc -t "${THREADS}" -o "${FASTQC_TRIM_DIR}" "${TRIMMED_FASTQS[@]}"
 fi
 
 # 7) Salmon index & quantification
@@ -120,10 +154,21 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "salmon" ]]; then
   fi
 
   echo "[80%] Salmon quant"
-  for R1 in "${TRIMMED_DIR}"/*_R1_trimmed.fastq.gz; do
-    [[ -e "$R1" ]] || { echo "No trimmed reads found in ${TRIMMED_DIR}" >&2; break; }
+  TRIMMED_R1=( "${TRIMMED_DIR}"/*_R1_trimmed.fastq.gz )
+  if [[ ! -f "${TRIMMED_R1[0]:-}" ]]; then
+    echo "ERROR: No trimmed R1 reads found in ${TRIMMED_DIR}" >&2
+    exit 1
+  fi
+
+  for R1 in "${TRIMMED_R1[@]}"; do
     SAMPLE=$(basename "$R1" _R1_trimmed.fastq.gz)
     R2="${TRIMMED_DIR}/${SAMPLE}_R2_trimmed.fastq.gz"
+
+    if [[ ! -f "$R2" ]]; then
+      echo "ERROR: Missing R2 mate for sample ${SAMPLE}: $R2" >&2
+      exit 1
+    fi
+
     salmon quant \
       -i "${SALMON_INDEX}" -l A \
       -1 "$R1" -2 "$R2" \
@@ -134,8 +179,31 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "salmon" ]]; then
 fi
 
 # 8) Final MultiQC (captures FastQC, Trimmomatic, AND Salmon)
-echo "[95%] MultiQC summary"
-multiqc "${FASTQC_RAW_DIR}" "${FASTQC_TRIM_DIR}" "${SALMON_OUT_DIR}" "${LOGS_DIR}" -o "${MULTIQC_DIR}" --force
+# Build MultiQC input list based on what was actually run
+MULTIQC_INPUTS=()
+
+if [[ -d "${FASTQC_RAW_DIR}" && -n "$(ls -A "${FASTQC_RAW_DIR}" 2>/dev/null)" ]]; then
+  MULTIQC_INPUTS+=("${FASTQC_RAW_DIR}")
+fi
+
+if [[ -d "${FASTQC_TRIM_DIR}" && -n "$(ls -A "${FASTQC_TRIM_DIR}" 2>/dev/null)" ]]; then
+  MULTIQC_INPUTS+=("${FASTQC_TRIM_DIR}")
+fi
+
+if [[ -d "${SALMON_OUT_DIR}" && -n "$(ls -A "${SALMON_OUT_DIR}" 2>/dev/null)" ]]; then
+  MULTIQC_INPUTS+=("${SALMON_OUT_DIR}")
+fi
+
+if [[ -d "${LOGS_DIR}" && -n "$(ls -A "${LOGS_DIR}" 2>/dev/null)" ]]; then
+  MULTIQC_INPUTS+=("${LOGS_DIR}")
+fi
+
+if [[ ${#MULTIQC_INPUTS[@]} -gt 0 ]]; then
+  echo "[95%] MultiQC summary"
+  multiqc "${MULTIQC_INPUTS[@]}" -o "${MULTIQC_DIR}" --force
+else
+  echo "[95%] Skipping MultiQC - no outputs to summarize"
+fi
 
 echo "[100%] Done"
 echo "  • FastQC (raw):     ${FASTQC_RAW_DIR}"
