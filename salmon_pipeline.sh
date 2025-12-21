@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # Usage: ./salmon_pipeline.sh [all|qc|trim|salmon]
-#   all    = raw FastQC → trim → trimmed FastQC → MultiQC → Salmon index & quant
+#   all    = raw FastQC → fastp trim → trimmed FastQC → MultiQC → Salmon index & quant
 #   qc     = raw FastQC only
-#   trim   = trim → trimmed FastQC → MultiQC → Salmon index & quant
+#   trim   = fastp trim → trimmed FastQC → MultiQC → Salmon index & quant
 #   salmon = Salmon index (if missing) → quant
 
 START_STEP=${1:-all}
@@ -40,7 +40,7 @@ if command -v conda >/dev/null 2>&1; then
   source "${CONDA_BASE}/etc/profile.d/conda.sh"
   if ! conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
     echo "Creating Conda env: ${ENV_NAME}"
-    conda create -y -n "${ENV_NAME}" fastqc multiqc salmon trimmomatic -c bioconda -c conda-forge
+    conda create -y -n "${ENV_NAME}" fastqc multiqc salmon fastp -c bioconda -c conda-forge
   fi
   echo "Activating Conda env: ${ENV_NAME}"
   conda activate "${ENV_NAME}"
@@ -82,29 +82,9 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "qc" ]]; then
   fastqc -t "${THREADS}" -o "${FASTQC_RAW_DIR}" "${RAW_FASTQS[@]}"
 fi
 
-# 6) Trim + FastQC (trimmed) + MultiQC
+# 6) Trim with fastp + FastQC (trimmed) + MultiQC
 if [[ "$START_STEP" == "all" || "$START_STEP" == "trim" ]]; then
-  echo "[35%] Trimmomatic"
-
-  # Find adapter file - check conda env first, then common locations
-  ADAPTER_FILE=""
-  CONDA_ADAPTER=( "${CONDA_PREFIX:-}"/share/trimmomatic-*/adapters/TruSeq3-PE.fa )
-
-  if [[ -f "${CONDA_ADAPTER[0]:-}" ]]; then
-    ADAPTER_FILE="${CONDA_ADAPTER[0]}"
-  elif [[ -f "TruSeq3-PE.fa" ]]; then
-    ADAPTER_FILE="TruSeq3-PE.fa"
-  elif [[ -f "${PROJECT_DIR}/adapters/TruSeq3-PE.fa" ]]; then
-    ADAPTER_FILE="${PROJECT_DIR}/adapters/TruSeq3-PE.fa"
-  else
-    echo "ERROR: Adapter file TruSeq3-PE.fa not found in:" >&2
-    echo "  - Conda env: ${CONDA_PREFIX:-'(not set)'}/share/trimmomatic-*/adapters/" >&2
-    echo "  - Current directory" >&2
-    echo "  - ${PROJECT_DIR}/adapters/" >&2
-    echo "Please install trimmomatic via conda or provide TruSeq3-PE.fa" >&2
-    exit 1
-  fi
-  echo "Using adapter file: ${ADAPTER_FILE}"
+  echo "[35%] fastp trimming and filtering"
 
   for R1 in "${RAW_DIR}"/*_R1_001.fastq.gz; do
     [[ -e "$R1" ]] || { echo "No FASTQs found in ${RAW_DIR}" >&2; break; }
@@ -115,15 +95,17 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "trim" ]]; then
       continue
     fi
 
-    trimmomatic PE -threads "${THREADS}" \
-      "$R1" "$R2" \
-      "${TRIMMED_DIR}/${SAMPLE}_R1_trimmed.fastq.gz" \
-      "${TRIMMED_DIR}/${SAMPLE}_R1_unpaired.fastq.gz" \
-      "${TRIMMED_DIR}/${SAMPLE}_R2_trimmed.fastq.gz" \
-      "${TRIMMED_DIR}/${SAMPLE}_R2_unpaired.fastq.gz" \
-      ILLUMINACLIP:"${ADAPTER_FILE}":2:30:10 \
-      LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 \
-      2> "${LOGS_DIR}/trimmomatic_${SAMPLE}.log"
+    fastp \
+      -i "$R1" -I "$R2" \
+      -o "${TRIMMED_DIR}/${SAMPLE}_R1_trimmed.fastq.gz" \
+      -O "${TRIMMED_DIR}/${SAMPLE}_R2_trimmed.fastq.gz" \
+      --trim_poly_g \
+      --qualified_quality_phred 20 \
+      --length_required 36 \
+      --thread "${THREADS}" \
+      --json "${LOGS_DIR}/${SAMPLE}.fastp.json" \
+      --html "${LOGS_DIR}/${SAMPLE}.fastp.html" \
+      2>&1 | tee "${LOGS_DIR}/fastp_${SAMPLE}.log"
   done
 
   echo "[50%] FastQC (trimmed)"

@@ -50,7 +50,7 @@ If your files follow SRA naming convention (`SAMPLE_1.fastq.gz` or `SAMPLE_1.fq.
 bash scripts/rename_fastqs.sh
 ```
 
-Run the full Salmon pipeline (raw QC → trim → trimmed QC → MultiQC → quant):
+Run the full Salmon pipeline (raw QC → fastp trim → trimmed QC → MultiQC → quant):
 ```bash
 bash salmon_pipeline.sh all
 ```
@@ -60,18 +60,20 @@ To use multiple CPU cores (example: 8 cores):
 THREADS=8 bash salmon_pipeline.sh all
 ```
 
+**Performance note:** Pipeline uses fastp for trimming (~5x faster than Trimmomatic) with automatic adapter detection, poly-G tail trimming, and comprehensive HTML/JSON QC reports.
+
 Pipeline outputs:
 - `out/fastqc_raw/` — FastQC reports for raw reads
-- `out/trimmed/` — Trimmed read pairs
+- `out/trimmed/` — Trimmed read pairs (fastp output)
 - `out/fastqc_trimmed/` — FastQC reports on trimmed reads
-- `out/multiqc/` — MultiQC summary report
+- `out/multiqc/` — MultiQC summary report (includes fastp stats)
 - `out/salmon/<sample>/` — Salmon quantification (quant.sf)
-- `logs/` — Pipeline logs
+- `logs/` — Pipeline logs (includes fastp JSON/HTML reports)
 
 ### FASTQ Naming and Renaming
 
 - Expected naming for paired-end reads: `<SAMPLE>_R1_001.fastq.gz` and `<SAMPLE>_R2_001.fastq.gz` in `data/fastq/`.
-  - Note: FastQC will accept any .fastq.gz, BUT trimming only processes _R1_001.fastq.gz so failure to name properly may cause unexpected performance
+  - Note: FastQC will accept any .fastq.gz, BUT fastp trimming only processes _R1_001.fastq.gz so failure to name properly may cause unexpected performance
 - If your files are SRA-style (e.g., `SAMPLE_1.fastq.gz` / `SAMPLE_2.fastq.gz` or `.fq.gz`), use the helper script to standardize names:
   - Preview changes: `bash scripts/rename_fastqs.sh --dry-run`
   - Apply changes: `bash scripts/rename_fastqs.sh`
@@ -225,10 +227,11 @@ Rscript scripts/run_deseq2.R \
 
 - After running the Salmon pipeline (`bash salmon_pipeline.sh all`):
   - `out/fastqc_raw/`: FastQC reports for raw reads (`*.html`, `*.zip`).
-  - `out/trimmed/`: Trimmed read pairs (`*_R1_trimmed.fastq.gz`, `*_R2_trimmed.fastq.gz`) and unpaired reads.
+  - `out/trimmed/`: Trimmed read pairs (`*_R1_trimmed.fastq.gz`, `*_R2_trimmed.fastq.gz`) from fastp.
   - `out/fastqc_trimmed/`: FastQC reports on trimmed reads.
-  - `out/multiqc/`: MultiQC summary (`multiqc_report.html`) aggregating FastQC and Trimmomatic logs.
+  - `out/multiqc/`: MultiQC summary (`multiqc_report.html`) aggregating FastQC and fastp reports.
   - `out/salmon/<sample>/`: Salmon quantification per sample (`quant.sf`, `lib_format_counts.json`, `meta_info.json`).
+  - `logs/`: fastp JSON/HTML reports (`*.fastp.json`, `*.fastp.html`) with detailed trimming statistics.
 
 - After running the QC check (`scripts/check_salmon_qc.py`):
   - Terminal output showing pass/fail status for each sample
@@ -281,6 +284,7 @@ Rscript scripts/run_deseq2.R \
 ## Citations
 
 - Salmon: Patro R, Duggal G, Love MI, Irizarry RA, Kingsford C. Salmon provides fast and bias-aware quantification of transcript expression. Nat Methods. 2017.
+- fastp: Chen S, Zhou Y, Chen Y, Gu J. fastp: an ultra-fast all-in-one FASTQ preprocessor. Bioinformatics. 2018.
 - DESeq2: Love MI, Huber W, Anders S. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biol. 2014.
 - tximport: Soneson C, Love MI, Robinson MD. Differential analyses for RNA-seq: transcript-level estimates improve gene-level inferences. F1000Research. 2015.
 - MultiQC: Ewels P et al. MultiQC: summarize analysis results for multiple tools and samples in a single report. Bioinformatics. 2016.
@@ -321,7 +325,7 @@ Rscript scripts/run_deseq2.R \
 │   ├── salmon/
 │   └── deseq2/
 │
-├── logs/ (FastQC and Trimmomatic logs)
+├── logs/ (FastQC and fastp logs/reports)
 │
 └── examples/
     └── sample_table.csv (example metadata)

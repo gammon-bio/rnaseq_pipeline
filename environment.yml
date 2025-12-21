@@ -1,10 +1,11 @@
 name: rnaseq
 channels:
   - conda-forge
+  - bioconda
 dependencies:
   - python=3.11
   - fastqc=0
-  - trimmomatic=0
+  - fastp
   - salmon
   - multiqc=1
   - pigz
