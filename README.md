@@ -1,6 +1,6 @@
 # Salmon + DESeq2 Pipeline 
 
-This repository packages your working Salmon quantification and DESeq2 downstream analysis into a reproducible, GitHub-ready layout with minimal, surgical changes. Your original analysis logic (volcano, enrichment, etc.) remains intact inside `tximport_deseq2.rmd`; the only additions are parameters for input/output paths and thresholds so it can be run headlessly.
+This repository combines RNAseq fastq file processing, Salmon and DESeq2 downstream analysis into a reproducible pipeline. Fastq files are processed with fastp, aligned/quantified with Salmon then analyzed with DESeq2. Final output includes annotated raw count files, DESeq2 statistics output table, differential experession visuals (PCA and volcano plot) and functional enrichment results. Contains multiple helper scripts for fetching fastqs from public datasets, fetching fa and gtf reference files and python based QC of salmon alignment.
 
 ## Quickstart
 
@@ -116,7 +116,7 @@ For mouse data:
 ```bash
 Rscript scripts/run_deseq2.R \
   --quant_dir out/salmon \
-  --gtf data/references/gtf/Mus_musculus.GRCm39.112.gtf \
+  --gtf data/references/gtf/Mus_musculus.GRCm39.115.gtf \
   --sample_table examples/sample_table.csv \
   --group_col condition \
   --project_name MyProject \
@@ -158,24 +158,24 @@ All outputs are written to `out/deseq2/` with your `--project_name` as prefix:
 
 ## Optional: Test Dataset (GSE52778)
 
-GSE52778 is a human airway smooth muscle cell dataset with 4 samples (2 controls + 2 treatments). Perfect for testing the full pipeline end-to-end.
+GSE52778 is a human airway smooth muscle cell dataset with 4 samples (2 controls + 2 treatments). Perfect for testing the full pipeline end-to-end. Pipeline correctly identifies top DEGs (FKBP5, MAOA, KLF15) from PMID: 24926665
 
 ### Fetch test FASTQs
 
-**Option 1: Fetch by GEO accession (automatic run resolution):**
+**Option 1: Use ENA instead of SRA Toolkit (faster, curl-based):**
+```bash
+bash scripts/fetch_test_fastqs.sh --runs SRR1039508,SRR1039509,SRR1039512,SRR1039513 --geo GSE52778 --method ena
+```
+
+**Option 2: Fetch by GEO accession (automatic run resolution, must install SRA-tools into conda env first):**
 ```bash
 conda activate rnaseq
 bash scripts/fetch_test_fastqs.sh --geo GSE52778
 ```
 
-**Option 2: Fetch specific SRR runs directly:**
+**Option 3: Fetch specific SRR runs directly:**
 ```bash
 bash scripts/fetch_test_fastqs.sh --runs SRR1039508,SRR1039509,SRR1039512,SRR1039513
-```
-
-**Option 3: Use ENA instead of SRA Toolkit (faster, curl-based):**
-```bash
-bash scripts/fetch_test_fastqs.sh --geo GSE52778 --method ena
 ```
 
 **Option 4: Use multiple threads with SRA Toolkit:**
@@ -197,7 +197,12 @@ bash scripts/fetch_test_fastqs.sh --geo GSE52778 --method sra-tools --threads 8
 
 ### After downloading FASTQs
 
-FASTQs from GSE52778 come in correct naming format. Continue with the pipeline:
+FASTQs from GSE52778 do not come in correct naming format. Must use renaming helper script.
+'''bash
+bash scripts/rename_fastqs.sh
+'''
+
+Continue with the pipeline:
 
 ```bash
 THREADS=8 bash salmon_pipeline.sh all
@@ -242,7 +247,7 @@ Rscript scripts/run_deseq2.R \
   - `out/deseq2/<PROJECT>_volcano_plot.pdf`: Volcano plot with thresholds.
   - `out/deseq2/<PROJECT>_PCA_plot.pdf`: PCA on VST-transformed counts.
   - `out/deseq2/<PROJECT>_raw_gene_counts.csv` and `_vst_norm_counts.csv`: Count matrices.
-  - Optional enrichment outputs (if enabled in your Rmd): Up/Down regulated enrichment Excel files.
+  - Enrichment outputs: Up/Down regulated enrichment Excel files. Note these are the enrichments on the top 200 genes within the specified l2FC & padj cutoffs.
 
 ## DESeq2 runner (scripts/run_deseq2.R)
 
