@@ -50,7 +50,7 @@ If your files follow SRA naming convention (`SAMPLE_1.fastq.gz` or `SAMPLE_1.fq.
 bash scripts/rename_fastqs.sh
 ```
 
-Run the full Salmon pipeline (raw QC → fastp trim → trimmed QC → MultiQC → quant):
+Run the full Salmon pipeline (fastp trim → trimmed QC → MultiQC → quant):
 ```bash
 bash salmon_pipeline.sh all
 ```
@@ -60,10 +60,9 @@ To use multiple CPU cores (example: 8 cores):
 THREADS=8 bash salmon_pipeline.sh all
 ```
 
-**Performance note:** Pipeline uses fastp for trimming (~5x faster than Trimmomatic) with automatic adapter detection, poly-G tail trimming, and comprehensive HTML/JSON QC reports.
+**Performance note:** Pipeline uses fastp for trimming (~5x faster than Trimmomatic) with automatic adapter detection, poly-G tail trimming, and comprehensive HTML/JSON QC reports. Raw FastQC is skipped since fastp handles all QC issues (adapters, quality, poly-G); post-trim FastQC + Salmon metrics provide sufficient validation.
 
 Pipeline outputs:
-- `out/fastqc_raw/` — FastQC reports for raw reads
 - `out/trimmed/` — Trimmed read pairs (fastp output)
 - `out/fastqc_trimmed/` — FastQC reports on trimmed reads
 - `out/multiqc/` — MultiQC summary report (includes fastp stats)
@@ -73,7 +72,7 @@ Pipeline outputs:
 ### FASTQ Naming and Renaming
 
 - Expected naming for paired-end reads: `<SAMPLE>_R1_001.fastq.gz` and `<SAMPLE>_R2_001.fastq.gz` in `data/fastq/`.
-  - Note: FastQC will accept any .fastq.gz, BUT fastp trimming only processes _R1_001.fastq.gz so failure to name properly may cause unexpected performance
+  - Note: fastp trimming only processes files matching `*_R1_001.fastq.gz` pattern, so failure to name properly will cause pipeline to skip samples
 - If your files are SRA-style (e.g., `SAMPLE_1.fastq.gz` / `SAMPLE_2.fastq.gz` or `.fq.gz`), use the helper script to standardize names:
   - Preview changes: `bash scripts/rename_fastqs.sh --dry-run`
   - Apply changes: `bash scripts/rename_fastqs.sh`
@@ -231,10 +230,9 @@ Rscript scripts/run_deseq2.R \
 ## Expected Outputs
 
 - After running the Salmon pipeline (`bash salmon_pipeline.sh all`):
-  - `out/fastqc_raw/`: FastQC reports for raw reads (`*.html`, `*.zip`).
   - `out/trimmed/`: Trimmed read pairs (`*_R1_trimmed.fastq.gz`, `*_R2_trimmed.fastq.gz`) from fastp.
-  - `out/fastqc_trimmed/`: FastQC reports on trimmed reads.
-  - `out/multiqc/`: MultiQC summary (`multiqc_report.html`) aggregating FastQC and fastp reports.
+  - `out/fastqc_trimmed/`: FastQC reports on trimmed reads (`*.html`, `*.zip`).
+  - `out/multiqc/`: MultiQC summary (`multiqc_report.html`) aggregating fastp and trimmed FastQC reports.
   - `out/salmon/<sample>/`: Salmon quantification per sample (`quant.sf`, `lib_format_counts.json`, `meta_info.json`).
   - `logs/`: fastp JSON/HTML reports (`*.fastp.json`, `*.fastp.html`) with detailed trimming statistics.
 
@@ -323,7 +321,6 @@ Rscript scripts/run_deseq2.R \
 │       └── fa/ (FASTA cDNA files)
 │
 ├── out/ (pipeline outputs)
-│   ├── fastqc_raw/
 │   ├── trimmed/
 │   ├── fastqc_trimmed/
 │   ├── multiqc/
@@ -468,8 +465,9 @@ Rscript scripts/run_deseq2.R \
   --out_dir results/deseq2
 ```
 
-## Backward compatibility
+## Pipeline Design Rationale
 
-- `salmon_pipeline.sh` keeps your original entrypoint and step flag (`all|qc|trim|salmon`). It now logs progress with percentages and writes outputs to `out/` subfolders. MultiQC is pointed at FastQC outputs and Trimmomatic logs under `logs/` so it picks them up.
-- `tximport_deseq2.rmd` is unchanged in analysis logic; only parameters were added for file paths and thresholds so your exact volcano and enrichment code is preserved.
-- Gene annotation is now automatic: species (human/mouse) is detected from GTF filename, eliminating manual configuration.
+- **fastp over Trimmomatic**: ~5x faster with automatic adapter detection and poly-G trimming
+- **No raw FastQC**: fastp handles all QC issues; post-trim FastQC + Salmon metrics provide sufficient validation
+- **MultiQC integration**: Automatically aggregates fastp, trimmed FastQC, and Salmon reports
+- **Automatic gene annotation**: Species detection from GTF filename eliminates manual configuration

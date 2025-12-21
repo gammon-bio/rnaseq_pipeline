@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./salmon_pipeline.sh [all|qc|trim|salmon]
-#   all    = raw FastQC → fastp trim → trimmed FastQC → MultiQC → Salmon index & quant
-#   qc     = raw FastQC only
+# Usage: ./salmon_pipeline.sh [all|trim|salmon]
+#   all    = fastp trim → trimmed FastQC → MultiQC → Salmon index & quant
 #   trim   = fastp trim → trimmed FastQC → MultiQC → Salmon index & quant
 #   salmon = Salmon index (if missing) → quant
 
 START_STEP=${1:-all}
-if [[ "$START_STEP" != "all" && "$START_STEP" != "qc" && "$START_STEP" != "trim" && "$START_STEP" != "salmon" ]]; then
-  echo "Usage: $0 [all|qc|trim|salmon]"
+if [[ "$START_STEP" != "all" && "$START_STEP" != "trim" && "$START_STEP" != "salmon" ]]; then
+  echo "Usage: $0 [all|trim|salmon]"
   exit 1
 fi
 
@@ -48,7 +47,6 @@ fi
 
 # 3) Ensure output dirs exist
 mkdir -p \
-  "${FASTQC_RAW_DIR}" \
   "${TRIMMED_DIR}" \
   "${FASTQC_TRIM_DIR}" \
   "${MULTIQC_DIR}" \
@@ -69,22 +67,11 @@ elif [[ "$START_STEP" == "salmon" ]]; then
   fi
 fi
 
-echo "[05%] Setup complete"
+echo "[10%] Setup complete"
 
-# 5) FastQC on raw reads
-if [[ "$START_STEP" == "all" || "$START_STEP" == "qc" ]]; then
-  echo "[15%] FastQC (raw)"
-  RAW_FASTQS=( "${RAW_DIR}"/*.fastq.gz )
-  if [[ ! -f "${RAW_FASTQS[0]:-}" ]]; then
-    echo "ERROR: No .fastq.gz files found in ${RAW_DIR}" >&2
-    exit 1
-  fi
-  fastqc -t "${THREADS}" -o "${FASTQC_RAW_DIR}" "${RAW_FASTQS[@]}"
-fi
-
-# 6) Trim with fastp + FastQC (trimmed) + MultiQC
+# 5) Trim with fastp + FastQC (trimmed)
 if [[ "$START_STEP" == "all" || "$START_STEP" == "trim" ]]; then
-  echo "[35%] fastp trimming and filtering"
+  echo "[25%] fastp trimming and filtering"
 
   for R1 in "${RAW_DIR}"/*_R1_001.fastq.gz; do
     [[ -e "$R1" ]] || { echo "No FASTQs found in ${RAW_DIR}" >&2; break; }
@@ -108,7 +95,7 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "trim" ]]; then
       2>&1 | tee "${LOGS_DIR}/fastp_${SAMPLE}.log"
   done
 
-  echo "[50%] FastQC (trimmed)"
+  echo "[45%] FastQC (trimmed)"
   TRIMMED_FASTQS=( "${TRIMMED_DIR}"/*_trimmed.fastq.gz )
   if [[ ! -f "${TRIMMED_FASTQS[0]:-}" ]]; then
     echo "ERROR: No trimmed .fastq.gz files found in ${TRIMMED_DIR}" >&2
@@ -117,7 +104,7 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "trim" ]]; then
   fastqc -t "${THREADS}" -o "${FASTQC_TRIM_DIR}" "${TRIMMED_FASTQS[@]}"
 fi
 
-# 7) Salmon index & quantification
+# 6) Salmon index & quantification
 if [[ "$START_STEP" == "all" || "$START_STEP" == "salmon" ]]; then
   # Find FASTA (cdna) in data/references/fa
   FA_GZ=( "${FA_DIR}"/*.fa.gz )
@@ -131,11 +118,11 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "salmon" ]]; then
   fi
 
   if [[ ! -d "${SALMON_INDEX}" ]]; then
-    echo "[70%] Salmon index"
+    echo "[65%] Salmon index"
     salmon index -t "${REF_FASTA}" -i "${SALMON_INDEX}" -p "${THREADS}"
   fi
 
-  echo "[80%] Salmon quant"
+  echo "[75%] Salmon quant"
   TRIMMED_R1=( "${TRIMMED_DIR}"/*_R1_trimmed.fastq.gz )
   if [[ ! -f "${TRIMMED_R1[0]:-}" ]]; then
     echo "ERROR: No trimmed R1 reads found in ${TRIMMED_DIR}" >&2
@@ -160,13 +147,9 @@ if [[ "$START_STEP" == "all" || "$START_STEP" == "salmon" ]]; then
   done
 fi
 
-# 8) Final MultiQC (captures FastQC, Trimmomatic, AND Salmon)
+# 7) Final MultiQC (captures fastp, FastQC trimmed, and Salmon)
 # Build MultiQC input list based on what was actually run
 MULTIQC_INPUTS=()
-
-if [[ -d "${FASTQC_RAW_DIR}" && -n "$(ls -A "${FASTQC_RAW_DIR}" 2>/dev/null)" ]]; then
-  MULTIQC_INPUTS+=("${FASTQC_RAW_DIR}")
-fi
 
 if [[ -d "${FASTQC_TRIM_DIR}" && -n "$(ls -A "${FASTQC_TRIM_DIR}" 2>/dev/null)" ]]; then
   MULTIQC_INPUTS+=("${FASTQC_TRIM_DIR}")
@@ -188,7 +171,6 @@ else
 fi
 
 echo "[100%] Done"
-echo "  • FastQC (raw):     ${FASTQC_RAW_DIR}"
 echo "  • Trimmed reads:    ${TRIMMED_DIR}"
 echo "  • FastQC (trimmed): ${FASTQC_TRIM_DIR}"
 echo "  • MultiQC:          ${MULTIQC_DIR}"
