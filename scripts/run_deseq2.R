@@ -17,6 +17,20 @@
 #   Rscript scripts/run_deseq2.R \
 #     --tximport_rds path/to/txi.rds \
 #     --sample_table examples/sample_table.csv
+#
+#   # Multi-factor design with explicit Wald contrast:
+#   Rscript scripts/run_deseq2.R \
+#     --quant_dir out/salmon \
+#     --gtf data/references/gtf/Mus_musculus.GRCm39.115.gtf \
+#     --sample_table examples/sample_table_multifactor.csv \
+#     --group_col condition --design "~ sex + condition" \
+#     --contrast condition,KPC,control
+#
+#   # Likelihood-ratio test (LRT):
+#   Rscript scripts/run_deseq2.R \
+#     --quant_dir out/salmon --gtf data/references/gtf/Mus_musculus.GRCm39.115.gtf \
+#     --sample_table examples/sample_table_multifactor.csv \
+#     --design "~ sex + timepoint + condition" --test LRT --reduced "~ sex + timepoint"
 
 suppressPackageStartupMessages({
   library(optparse)
@@ -44,7 +58,17 @@ option_list <- list(
   make_option(c("--out_dir"), type = "character", default = "out/deseq2",
               help = "Output directory for DESeq2 artifacts [default %default]"),
   make_option(c("--project_name"), type = "character", default = "project",
-              help = "Project name prefix for output files [default %default]")
+              help = "Project name prefix for output files [default %default]"),
+  make_option(c("--design"), type = "character", default = NULL,
+              help = "Full design formula, e.g. '~ sex + condition' [default: ~ group_col]"),
+  make_option(c("--test"), type = "character", default = "Wald",
+              help = "DESeq2 test: Wald or LRT [default %default]"),
+  make_option(c("--reduced"), type = "character", default = NULL,
+              help = "Reduced model formula for LRT, e.g. '~ sex' (required when --test LRT)"),
+  make_option(c("--ref_level"), type = "character", default = "control",
+              help = "Reference level for group_col [default %default]"),
+  make_option(c("--contrast"), type = "character", default = NULL,
+              help = "Wald contrast as 'factor,numerator,denominator'")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -58,14 +82,19 @@ dir.create(opt$out_dir, showWarnings = FALSE, recursive = TRUE)
 # Prepare params for Rmd
 params <- list(
   quant_dir   = if (!is.null(opt$quant_dir)) opt$quant_dir else "out/salmon",
-  gtf_file    = if (!is.null(opt$gtf)) opt$gtf else "data/references/gtf/Mus_musculus.GRCm39.109.gtf",
+  gtf_file    = if (!is.null(opt$gtf)) opt$gtf else "data/references/gtf/Mus_musculus.GRCm39.115.gtf",
   tximport_rds = NULL,
   sample_table = opt$sample_table,
   group_col    = opt$group_col,
   out_dir      = opt$out_dir,
   padj_thresh  = opt$padj_thresh,
   lfc_thresh   = opt$lfc_thresh,
-  project_name = opt$project_name
+  project_name = opt$project_name,
+  design       = opt$design,
+  test         = opt$test,
+  reduced      = opt$reduced,
+  ref_level    = opt$ref_level,
+  contrast     = opt$contrast
 )
 
 # Option branch: tximport_rds provided directly

@@ -31,15 +31,25 @@ For mouse data:
 bash scripts/get_refs.sh --species mouse --build GRCm39
 ```
 
-To pin a specific Ensembl release (e.g., release 110):
+By default (`--decoy`, on), `get_refs.sh` also downloads the Ensembl genome (primary assembly) and builds `data/references/fa/decoys.txt` and `data/references/fa/gentrome.fa.gz` (transcriptome + genome) for a **decoy-aware Salmon index**. This improves quantification accuracy by letting Salmon discard reads from genomic/intronic regions instead of mis-assigning them to transcripts.
+
+To skip the genome download and build a lightweight cDNA-only index:
+```bash
+bash scripts/get_refs.sh --species mouse --build GRCm39 --no-decoy
+```
+
+The default Ensembl release is now **115**. To pin a specific release (e.g., release 110):
 ```bash
 bash scripts/get_refs.sh --species human --build GRCh38 --release 110
 ```
 
-Or pass explicit GTF/FASTA URLs:
+Or pass explicit GTF/FASTA URLs (and `--genome_url` to override the auto-resolved genome for the decoy build):
 ```bash
 bash scripts/get_refs.sh --gtf_url https://... --fasta_url https://...
+bash scripts/get_refs.sh --species mouse --build GRCm39 --genome_url https://...
 ```
+
+> **Note:** Building the decoy-aware **mouse** index downloads a ~800 MB genome and `salmon index` needs roughly **16 GB+ RAM**. On small machines, use `--no-decoy` for a transcriptome-only index.
 
 **3. Prepare FASTQs and run Salmon pipeline:**
 
@@ -61,6 +71,8 @@ THREADS=8 bash salmon_pipeline.sh all
 ```
 
 **Performance note:** Pipeline uses fastp for trimming (~5x faster than Trimmomatic) with automatic adapter detection, poly-G tail trimming, and comprehensive HTML/JSON QC reports. Raw FastQC is skipped since fastp handles all QC issues (adapters, quality, poly-G); post-trim FastQC + Salmon metrics provide sufficient validation.
+
+**Salmon index:** `salmon_pipeline.sh` auto-detects `gentrome.fa.gz` + `decoys.txt` in `data/references/fa/` and builds a decoy-aware index (`salmon index -t gentrome.fa.gz -d decoys.txt -k 31`), falling back to a transcriptome-only index when those files are absent. If you previously built a non-decoy `salmon_index/`, the script detects it (via `info.json` `num_decoys: 0`) and automatically rebuilds it once decoy references are present.
 
 Pipeline outputs:
 - `out/trimmed/` — Trimmed read pairs (fastp output)
@@ -125,6 +137,40 @@ Rscript scripts/run_deseq2.R \
 
 **Important:** The `--gtf` flag requires the complete filename including extension (e.g., `Homo_sapiens.GRCh38.115.gtf`), not just the directory path.
 
+#### Multi-factor designs and LRT
+
+`run_deseq2.R` supports multi-factor models, covariates/interactions, and the likelihood-ratio test (LRT). Relevant flags:
+
+- `--design` — full model formula, e.g. `"~ sex + condition"` (supports covariates and interactions like `"~ sex*timepoint"`). Defaults to `~ group_col`.
+- `--test` — `Wald` (default) or `LRT`.
+- `--reduced` — reduced model formula for LRT, e.g. `"~ sex + timepoint"` (required when `--test LRT`).
+- `--ref_level` — reference level for `group_col` (default `control`; skipped automatically if that level is absent).
+- `--contrast` — Wald contrast `"factor,numerator,denominator"`, e.g. `condition,KPC,control`.
+
+Multi-factor Wald example (controls for `sex` while testing `condition`):
+```bash
+Rscript scripts/run_deseq2.R \
+  --quant_dir out/salmon \
+  --gtf data/references/gtf/Mus_musculus.GRCm39.115.gtf \
+  --sample_table examples/sample_table_multifactor.csv \
+  --group_col condition --design "~ sex + condition" \
+  --contrast condition,KPC,control \
+  --project_name MyProject
+```
+
+LRT example (tests whether `condition` improves the model over `~ sex + timepoint`):
+```bash
+Rscript scripts/run_deseq2.R \
+  --quant_dir out/salmon \
+  --gtf data/references/gtf/Mus_musculus.GRCm39.115.gtf \
+  --sample_table examples/sample_table_multifactor.csv \
+  --design "~ sex + timepoint + condition" \
+  --test LRT --reduced "~ sex + timepoint" \
+  --project_name MyProject_LRT
+```
+
+> **Note:** For LRT, the reported p-value/padj is the likelihood-ratio test across the dropped term(s), while `log2FoldChange` corresponds to the chosen contrast/coefficient.
+
 ### DESeq2 outputs
 
 All outputs are written to `out/deseq2/` with your `--project_name` as prefix:
@@ -145,15 +191,19 @@ All outputs are written to `out/deseq2/` with your `--project_name` as prefix:
 - Flags:
   - `--species` human|mouse (default: human)
   - `--build` GRCh38|GRCm39 (default depends on species)
-  - `--release` <n>|current (default: current)
+  - `--release` <n>|current (default: 115)
   - `--gtf_flavor` plain|chr|chr_patch_hapl_scaff|abinitio|auto (default: auto; prefers plain)
   - `--gtf_url` and `--fasta_url` to override URLs directly
+  - `--decoy` (default on) / `--no-decoy` to skip the genome download and build a lightweight cDNA-only index
+  - `--genome_url` <URL> to override the auto-resolved Ensembl genome (primary assembly) used for the decoy build
 - Behavior:
   - Creates `data/references/{gtf,fa}/`
   - Downloads via `curl -L -C -` (resume)
   - Decompresses `.gz` to `.gtf`/`.fa`
+  - With `--decoy` (default): downloads the Ensembl genome (primary assembly) and builds `data/references/fa/decoys.txt` and `data/references/fa/gentrome.fa.gz` (transcriptome + genome) for a decoy-aware Salmon index. This improves quantification accuracy by letting Salmon discard reads from genomic/intronic regions instead of mis-assigning them to transcripts.
   - Writes `data/references/README.md` with exact URLs and SHA256 checksums
 - Salmon references use Ensembl cDNA FASTA (best practice for transcript-level quantification).
+- **Note:** Building the decoy-aware **mouse** index downloads a ~800 MB genome and `salmon index` needs roughly **16 GB+ RAM**; use `--no-decoy` on small machines.
 
 ## Optional: Test Dataset (GSE52778)
 
@@ -259,6 +309,13 @@ Rscript scripts/run_deseq2.R \
   - `--padj_thresh`, `--lfc_thresh` forwarded to your volcano/summary logic
   - `--out_dir` output directory (default: `out/deseq2`)
   - `--project_name` prefix added to all outputs (e.g., `CU25_*.csv`)
+- Multi-factor / LRT flags:
+  - `--design` full model formula, e.g. `"~ sex + condition"` (supports covariates and interactions like `"~ sex*timepoint"`; defaults to `~ group_col`)
+  - `--test` `Wald` (default) or `LRT`
+  - `--reduced` reduced model formula for LRT, e.g. `"~ sex + timepoint"` (required when `--test LRT`)
+  - `--ref_level` reference level for `group_col` (default `control`; skipped automatically if that level is absent)
+  - `--contrast` Wald contrast `"factor,numerator,denominator"`, e.g. `condition,KPC,control`
+- For LRT, the reported p-value/padj is the likelihood-ratio test across the dropped term(s), while `log2FoldChange` corresponds to the chosen contrast/coefficient.
 
 ### Rmd parameter: install_pkgs
 
@@ -318,7 +375,7 @@ Rscript scripts/run_deseq2.R \
 │   ├── fastq/ (place raw paired-end FASTQs here)
 │   └── references/ (created by get_refs.sh)
 │       ├── gtf/ (GTF files)
-│       └── fa/ (FASTA cDNA files)
+│       └── fa/ (cDNA FASTA; decoy build also adds genome, decoys.txt, gentrome.fa.gz)
 │
 ├── out/ (pipeline outputs)
 │   ├── trimmed/
@@ -330,7 +387,8 @@ Rscript scripts/run_deseq2.R \
 ├── logs/ (FastQC and fastp logs/reports)
 │
 └── examples/
-    └── sample_table.csv (example metadata)
+    ├── sample_table.csv (example metadata)
+    └── sample_table_multifactor.csv (multi-factor: sex + timepoint + condition)
 ```
 
 ## Scripts and utilities
@@ -367,25 +425,32 @@ Downloads Ensembl GTF and cDNA FASTA files for Salmon index building.
 
 **Key features:**
 - Supports human (GRCh38) and mouse (GRCm39) genomes
-- Optional Ensembl release pinning (default: latest)
+- Optional Ensembl release pinning (default: 115)
 - Direct GTF flavor selection (default: auto-prefer plain GTF)
+- Decoy-aware index by default: also downloads the genome (primary assembly) and builds `decoys.txt` + `gentrome.fa.gz` (use `--no-decoy` for a cDNA-only index)
+- `--genome_url` to override the auto-resolved genome for the decoy build
 - Automatic decompression
 - SHA256 checksums written to `data/references/README.md`
 
 **Usage examples:**
 ```bash
-# Human (default)
+# Human (default, decoy-aware)
 bash scripts/get_refs.sh --species human --build GRCh38
 
 # Mouse
 bash scripts/get_refs.sh --species mouse --build GRCm39
 
+# Mouse, cDNA-only (no genome download; lighter on RAM)
+bash scripts/get_refs.sh --species mouse --build GRCm39 --no-decoy
+
 # Specific release
 bash scripts/get_refs.sh --species human --build GRCh38 --release 110
 
-# Explicit URLs
+# Explicit URLs (override genome for decoy build with --genome_url)
 bash scripts/get_refs.sh --gtf_url https://... --fasta_url https://...
 ```
+
+> **Note:** The decoy-aware **mouse** index downloads a ~800 MB genome and needs roughly **16 GB+ RAM** for `salmon index`; use `--no-decoy` on small machines.
 
 ### scripts/rename_fastqs.sh
 
@@ -442,6 +507,8 @@ Wrapper around `tximport_deseq2.rmd` for headless DESeq2 analysis. Handles GTF p
 - Volcano plots with labeled top genes
 - Gene enrichment analysis (KEGG, GO, Reactome, etc.)
 - Configurable p-value and log2FC thresholds
+- Multi-factor designs via `--design` (covariates and interactions) with `--contrast` and `--ref_level`
+- Likelihood-ratio test via `--test LRT` + `--reduced`
 
 **Usage examples:**
 ```bash
@@ -463,6 +530,24 @@ Rscript scripts/run_deseq2.R \
   --padj_thresh 0.01 \
   --lfc_thresh 1.0 \
   --out_dir results/deseq2
+
+# Multi-factor Wald (control for sex while testing condition)
+Rscript scripts/run_deseq2.R \
+  --quant_dir out/salmon \
+  --gtf data/references/gtf/Mus_musculus.GRCm39.115.gtf \
+  --sample_table examples/sample_table_multifactor.csv \
+  --group_col condition --design "~ sex + condition" \
+  --contrast condition,KPC,control \
+  --project_name MyProject
+
+# Likelihood-ratio test (drop condition from the full model)
+Rscript scripts/run_deseq2.R \
+  --quant_dir out/salmon \
+  --gtf data/references/gtf/Mus_musculus.GRCm39.115.gtf \
+  --sample_table examples/sample_table_multifactor.csv \
+  --design "~ sex + timepoint + condition" \
+  --test LRT --reduced "~ sex + timepoint" \
+  --project_name MyProject_LRT
 ```
 
 ## Pipeline Design Rationale

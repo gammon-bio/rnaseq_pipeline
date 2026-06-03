@@ -1,0 +1,9 @@
+sample,sex,timepoint,condition
+CU55_2,M,early,control
+CU55_3,F,early,control
+CU55_5,M,late,control
+CU55_8,F,late,control
+CU55_12,M,early,KPC
+CU55_13,F,early,KPC
+CU55_15,M,late,KPC
+CU55_17,F,late,KPC

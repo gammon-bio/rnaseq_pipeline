@@ -39,7 +39,7 @@ if command -v conda >/dev/null 2>&1; then
   source "${CONDA_BASE}/etc/profile.d/conda.sh"
   if ! conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
     echo "Creating Conda env: ${ENV_NAME}"
-    conda create -y -n "${ENV_NAME}" fastqc multiqc salmon fastp -c bioconda -c conda-forge
+    conda create -y -n "${ENV_NAME}" fastqc multiqc salmon fastp -c conda-forge -c bioconda
   fi
   echo "Activating Conda env: ${ENV_NAME}"
   conda activate "${ENV_NAME}"
@@ -106,20 +106,40 @@ fi
 
 # 6) Salmon index & quantification
 if [[ "$START_STEP" == "all" || "$START_STEP" == "salmon" ]]; then
-  # Find FASTA (cdna) in data/references/fa
-  FA_GZ=( "${FA_DIR}"/*.fa.gz )
-  FA=( "${FA_DIR}"/*.fa )
-  REF_FASTA=""
-  if [[ -f "${FA_GZ[0]:-}" ]]; then REF_FASTA="${FA_GZ[0]}"; fi
-  if [[ -z "$REF_FASTA" && -f "${FA[0]:-}" ]]; then REF_FASTA="${FA[0]}"; fi
-  if [[ -z "$REF_FASTA" ]]; then
-    echo "ERROR: No FASTA found in ${FA_DIR}. Use scripts/get_refs.sh first." >&2
-    exit 1
+  GENTROME="${FA_DIR}/gentrome.fa.gz"
+  DECOYS="${FA_DIR}/decoys.txt"
+
+  # Decide whether the Salmon index needs to be (re)built
+  NEED_INDEX=false
+  if [[ ! -d "${SALMON_INDEX}" ]]; then
+    NEED_INDEX=true
+  elif [[ -f "${GENTROME}" && -f "${DECOYS}" ]] && grep -q '"num_decoys": 0' "${SALMON_INDEX}/info.json" 2>/dev/null; then
+    echo "Existing Salmon index has no decoys but decoy references are present; rebuilding."
+    rm -rf "${SALMON_INDEX}"
+    NEED_INDEX=true
   fi
 
-  if [[ ! -d "${SALMON_INDEX}" ]]; then
-    echo "[65%] Salmon index"
-    salmon index -t "${REF_FASTA}" -i "${SALMON_INDEX}" -p "${THREADS}"
+  if [[ "${NEED_INDEX}" == "true" ]]; then
+    if [[ -f "${GENTROME}" && -f "${DECOYS}" ]]; then
+      echo "[65%] Salmon index (decoy-aware: gentrome + decoys)"
+      salmon index -t "${GENTROME}" -d "${DECOYS}" -i "${SALMON_INDEX}" -k 31 -p "${THREADS}"
+    else
+      # Transcriptome-only fallback: prefer a cDNA FASTA, excluding genome/gentrome files
+      REF_FASTA=""
+      for f in "${FA_DIR}"/*cdna*.fa.gz "${FA_DIR}"/*.fa.gz "${FA_DIR}"/*.fa; do
+        [[ -e "$f" ]] || continue
+        case "$(basename "$f")" in
+          gentrome.fa.gz|*dna.primary_assembly*|*dna.toplevel*|*dna_sm*|*dna_rm*) continue ;;
+        esac
+        REF_FASTA="$f"; break
+      done
+      if [[ -z "${REF_FASTA}" ]]; then
+        echo "ERROR: No transcriptome FASTA found in ${FA_DIR}. Use scripts/get_refs.sh first." >&2
+        exit 1
+      fi
+      echo "[65%] Salmon index (transcriptome-only: $(basename "${REF_FASTA}"))"
+      salmon index -t "${REF_FASTA}" -i "${SALMON_INDEX}" -k 31 -p "${THREADS}"
+    fi
   fi
 
   echo "[75%] Salmon quant"

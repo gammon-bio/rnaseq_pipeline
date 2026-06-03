@@ -4,7 +4,7 @@ output: html_document
 date: "2025-07-17"
 params:
   quant_dir: "out/salmon"           # directory containing per-sample Salmon dirs with quant.sf
-  gtf_file: "data/references/gtf/Mus_musculus.GRCm39.109.gtf"  # path to GTF (default now under data/references)
+  gtf_file: "data/references/gtf/Mus_musculus.GRCm39.115.gtf"  # path to GTF (default now under data/references)
   project_name: "test"              # project prefix for all output filenames
   install_pkgs: false                # set TRUE to allow install during render (use conda env instead)
   tximport_rds: !r NULL              # optional precomputed tximport object (.rds)
@@ -13,6 +13,11 @@ params:
   out_dir: "out/deseq2"             # output directory for figures/tables
   padj_thresh: 0.05                  # adjusted p-value threshold for summaries/volcano
   lfc_thresh: 0.5                    # absolute log2FC threshold for volcano highlighting
+  design: !r NULL                   # full design formula string, e.g. "~ sex + condition"; NULL => ~ group_col
+  test: "Wald"                      # "Wald" or "LRT"
+  reduced: !r NULL                  # reduced formula string for LRT, e.g. "~ sex"
+  ref_level: "control"              # reference level for group_col (skipped if absent)
+  contrast: !r NULL                 # Wald contrast "factor,numerator,denominator"
 ---
 
 ```{r setup, include=FALSE}
@@ -28,7 +33,7 @@ knitr::opts_chunk$set(echo = TRUE)
 if (isTRUE(params$install_pkgs)) {
   if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager", repos = "https://cloud.r-project.org")
-  BiocManager::install(c("tximport","GenomicFeatures","txdbmaker"), ask = FALSE, update = FALSE)
+  BiocManager::install(c("tximport","GenomicFeatures","txdbmaker","rtracklayer"), ask = FALSE, update = FALSE)
 }
 
 suppressPackageStartupMessages({
@@ -114,28 +119,71 @@ dataset_name <- if (grepl("Homo_sapiens|GRCh", gtf_file, ignore.case = TRUE)) {
 
 message("[Rmd] Using biomaRt dataset: ", dataset_name)
 
-annot <- tryCatch({
-  message("Fetching gene annotations from Ensembl biomaRt...")
-  ensembl <- useEnsembl(biomart = "genes", dataset = dataset_name)
-  result <- getBM(
-    attributes = c("ensembl_gene_id", "external_gene_name"),
-    filters = "ensembl_gene_id",
-    values = unique(gene_ids),
-    mart = ensembl
-  )
-  # Remove duplicate Ensembl IDs (keep first occurrence)
-  result <- dplyr::distinct(result, ensembl_gene_id, .keep_all = TRUE)
-  message("Retrieved annotations for ", nrow(result), " genes")
-  result
+annot <- data.frame(
+  ensembl_gene_id = unique(gene_ids),
+  external_gene_name = NA_character_,
+  stringsAsFactors = FALSE
+)
+
+annot_local <- tryCatch({
+  if (!requireNamespace("rtracklayer", quietly = TRUE)) {
+    stop("rtracklayer is not installed")
+  }
+  message("[Rmd] Extracting gene symbols from local GTF...")
+  gtf_annot <- as.data.frame(rtracklayer::import(gtf_file))
+  if (!all(c("gene_id", "gene_name") %in% colnames(gtf_annot))) {
+    stop("GTF is missing gene_id/gene_name attributes")
+  }
+  result <- gtf_annot %>%
+    dplyr::select(gene_id, gene_name) %>%
+    dplyr::filter(!is.na(gene_id), !is.na(gene_name), gene_name != "") %>%
+    dplyr::transmute(
+      ensembl_gene_id = sub("\\..*$", "", as.character(gene_id)),
+      external_gene_name = as.character(gene_name)
+    ) %>%
+    dplyr::distinct(ensembl_gene_id, .keep_all = TRUE)
+  message("[Rmd] Retrieved annotations for ", nrow(result), " genes from GTF")
+  as.data.frame(result)
 }, error = function(e) {
-  warning("biomaRt annotation failed: ", conditionMessage(e),
-          "\nProceeding without gene symbol annotation.")
-  data.frame(
-    ensembl_gene_id = unique(gene_ids),
-    external_gene_name = NA_character_,
-    stringsAsFactors = FALSE
-  )
+  warning("[Rmd] Local GTF annotation failed: ", conditionMessage(e))
+  NULL
 })
+
+if (!is.null(annot_local) && nrow(annot_local) > 0) {
+  annot <- annot %>%
+    dplyr::left_join(annot_local, by = "ensembl_gene_id", suffix = c("", ".local")) %>%
+    dplyr::mutate(external_gene_name = dplyr::coalesce(external_gene_name, external_gene_name.local)) %>%
+    dplyr::select(ensembl_gene_id, external_gene_name)
+}
+
+missing_gene_ids <- unique(annot$ensembl_gene_id[is.na(annot$external_gene_name) | annot$external_gene_name == ""])
+
+if (length(missing_gene_ids) > 0) {
+  annot_remote <- tryCatch({
+    message("[Rmd] Fetching missing gene annotations from Ensembl biomaRt...")
+    ensembl <- useEnsembl(biomart = "genes", dataset = dataset_name)
+    result <- getBM(
+      attributes = c("ensembl_gene_id", "external_gene_name"),
+      filters = "ensembl_gene_id",
+      values = missing_gene_ids,
+      mart = ensembl
+    )
+    result <- dplyr::distinct(result, ensembl_gene_id, .keep_all = TRUE)
+    message("[Rmd] Retrieved annotations for ", nrow(result), " genes from biomaRt")
+    as.data.frame(result)
+  }, error = function(e) {
+    warning("[Rmd] biomaRt annotation failed: ", conditionMessage(e),
+            "\nProceeding with whatever annotations are available locally.")
+    NULL
+  })
+
+  if (!is.null(annot_remote) && nrow(annot_remote) > 0) {
+    annot <- annot %>%
+      dplyr::left_join(annot_remote, by = "ensembl_gene_id", suffix = c("", ".remote")) %>%
+      dplyr::mutate(external_gene_name = dplyr::coalesce(external_gene_name, external_gene_name.remote)) %>%
+      dplyr::select(ensembl_gene_id, external_gene_name)
+  }
+}
 
 # Force sane types
 annot <- as.data.frame(annot)
@@ -288,7 +336,30 @@ all(colnames(txi$counts) == rownames(colData))
 ```{r}
 message("Creating DESeq2 dataset directly from tximport object (preserves length offsets)")
 
-design_formula <- as.formula(paste("~", params$group_col))
+# Build the design formula: full --design string if provided, else ~ group_col
+if (!is.null(params$design) && nzchar(params$design)) {
+  design_formula <- as.formula(params$design)
+} else {
+  design_formula <- as.formula(paste("~", params$group_col))
+}
+message("[Rmd] Design: ", paste(deparse(design_formula), collapse = ""))
+
+# Validate that every design variable exists in the sample table
+design_vars <- all.vars(design_formula)
+missing_design_vars <- setdiff(design_vars, colnames(colData))
+if (length(missing_design_vars) > 0) {
+  stop("Design references columns not present in sample_table: ",
+       paste(missing_design_vars, collapse = ", "),
+       "\nAvailable columns: ", paste(colnames(colData), collapse = ", "))
+}
+
+# Coerce character/logical design variables to factors (leave numeric covariates continuous)
+for (v in design_vars) {
+  if (is.character(colData[[v]]) || is.logical(colData[[v]])) {
+    colData[[v]] <- factor(colData[[v]])
+  }
+}
+
 dds <- DESeqDataSetFromTximport(txi,
                                  colData = colData,
                                  design = design_formula)
@@ -298,8 +369,17 @@ dds
 # keeping rows that have at least 10 reads total
 dds <- dds[ rowSums(counts(dds)) >= 10, ]
 
-# set the factor level
-dds[[params$group_col]] <- relevel(dds[[params$group_col]], ref = "control")
+# Set the reference level for the variable of interest (group_col), when applicable
+if (!is.null(params$ref_level) && nzchar(params$ref_level) &&
+    params$group_col %in% design_vars) {
+  if (params$ref_level %in% levels(dds[[params$group_col]])) {
+    dds[[params$group_col]] <- relevel(dds[[params$group_col]], ref = params$ref_level)
+  } else {
+    message("[Rmd] ref_level '", params$ref_level, "' is not a level of '",
+            params$group_col, "'; leaving DESeq2 default reference. Levels present: ",
+            paste(levels(dds[[params$group_col]]), collapse = ", "))
+  }
+}
 ```
 
 #NOTE: if you have technical replicates collapse them
@@ -308,9 +388,27 @@ dds[[params$group_col]] <- relevel(dds[[params$group_col]], ref = "control")
 # Run DESeq
 
 ```{r}
-dds <- DESeq(dds)
+# Run the differential expression test (Wald by default, or LRT if requested)
+if (identical(params$test, "LRT")) {
+  if (is.null(params$reduced) || !nzchar(params$reduced)) {
+    stop("test = 'LRT' requires a --reduced formula (e.g. '~ sex').")
+  }
+  reduced_formula <- as.formula(params$reduced)
+  message("[Rmd] Running LRT with reduced model: ",
+          paste(deparse(reduced_formula), collapse = ""))
+  dds <- DESeq(dds, test = "LRT", reduced = reduced_formula)
+} else {
+  dds <- DESeq(dds)
+}
 
-res <- results(dds)
+# Extract results: explicit contrast if provided, else DESeq2 default
+if (!is.null(params$contrast) && nzchar(params$contrast)) {
+  contrast_vec <- trimws(strsplit(params$contrast, ",")[[1]])
+  message("[Rmd] Using contrast: ", paste(contrast_vec, collapse = " / "))
+  res <- results(dds, contrast = contrast_vec, alpha = padj_thresh)
+} else {
+  res <- results(dds, alpha = padj_thresh)
+}
 res
 
 # baseMean = average of normalized counts
@@ -334,14 +432,10 @@ write.csv(res_df,
 # Explore results
 
 ```{r}
+# res is already computed at alpha = padj_thresh above
 summary(res)
-# upregulated/downregulated genes, outliers. Default padj is .1
 
-# increasing cutoff to < params$padj_thresh
-res0.05 <- results(dds, alpha = padj_thresh)
-summary(res0.05)
-
-# contrasts
+# available coefficients / contrasts
 resultsNames(dds)
 
 # MA plot
@@ -393,6 +487,15 @@ for (i in seq_len(nrow(top_genes))) {
   }
 }
 
+# Dynamic plot title from the contrast / group_col / test
+plot_title <- if (!is.null(params$contrast) && nzchar(params$contrast)) {
+  cv <- trimws(strsplit(params$contrast, ",")[[1]])
+  if (length(cv) == 3) paste0(cv[2], " vs ", cv[3], " (", cv[1], ")") else params$group_col
+} else {
+  params$group_col
+}
+if (identical(params$test, "LRT")) plot_title <- paste0(plot_title, " (LRT)")
+
 volcano_plot <- ggplot(data = volcano_data,
                        aes(x = log2FoldChange, y = -log10(padj_plot),
                            col = diffexpressed, label = delabel)) +
@@ -402,7 +505,7 @@ volcano_plot <- ggplot(data = volcano_data,
   scale_color_manual(values = c("#00AFBB", "grey", "red"),
                      labels = c("Downregulated", "Not Significant", "Upregulated")) +
   labs(color = 'Up vs Down', x = expression("log"[2]*"FC"), y = expression("-log"[10]*"padj")) +
-  ggtitle("Control vs ID8 (p53-/-)") +
+  ggtitle(plot_title) +
   geom_text_repel(max.overlaps = Inf)
 
 ggsave(file.path(out_dir, paste0(file_prefix, "volcano_plot.pdf")), 
@@ -420,7 +523,7 @@ plotPCA(vsd, intgroup = params$group_col)
 
 # Add gene symbols to VST normalized counts
 vst_counts <- as.data.frame(assay(vsd))
-vst_counts$ensembl_gene_id <- rownames(vst_counts)
+vst_counts$ensembl_gene_id <- sub("\\..*$", "", rownames(vst_counts))
 vst_counts <- dplyr::left_join(vst_counts, annot, by = "ensembl_gene_id")
 vst_counts <- vst_counts %>%
   dplyr::select(ensembl_gene_id, external_gene_name, dplyr::everything())
@@ -429,7 +532,23 @@ write.csv(vst_counts,
           file = file.path(out_dir, paste0(file_prefix, "vst_norm_counts.csv")),
           row.names = FALSE)
 
-pca_plot <- plotPCA(vsd, intgroup = params$group_col) + stat_ellipse(linetype = 3)
+pca_plot <- plotPCA(vsd, intgroup = params$group_col)
+pca_data <- plotPCA(vsd, intgroup = params$group_col, returnData = TRUE)
+group_counts <- table(pca_data[[params$group_col]])
+
+if (length(group_counts) > 0 && all(group_counts >= 3)) {
+  ellipse_plot <- pca_plot + stat_ellipse(linetype = 3)
+  pca_plot <- tryCatch({
+    ggplot2::ggplot_build(ellipse_plot)
+    ellipse_plot
+  }, error = function(e) {
+    message("[Rmd] Skipping PCA ellipses: ", conditionMessage(e))
+    pca_plot
+  })
+} else {
+  message("[Rmd] Skipping PCA ellipses because each group needs at least 3 samples. Group sizes: ",
+          paste(names(group_counts), group_counts, sep = "=", collapse = ", "))
+}
 
 ggsave(file.path(out_dir, paste0(file_prefix, "PCA_plot.pdf")),
        plot = pca_plot,
