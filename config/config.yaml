@@ -1,0 +1,53 @@
+# Default configuration — MOUSE references + the prebuilt decoy-aware index.
+# Override per run with:  snakemake --configfile config/config.test.yaml ...
+# (CLI --configfile values are merged on top of this base config.)
+
+# --- inputs / outputs ---
+fastq_dir: data/fastq          # paired FASTQs: <sample>_R1_001.fastq.gz / <sample>_R2_001.fastq.gz
+out_dir: out
+threads: 8
+
+# --- Salmon index ---
+# PREBUILT MOUSE decoy-aware index. Inputs are ancient() and the output is
+# protected(); registered as up-to-date via `snakemake --touch salmon_index`,
+# so the salmon_index rule is SKIPPED whenever this directory already exists.
+salmon_index: salmon_index
+decoy_aware: true
+gentrome: data/references/fa/gentrome.fa.gz
+decoys: data/references/fa/decoys.txt
+# Used only when decoy_aware: false (transcriptome-only index)
+transcriptome: data/references/fa/Mus_musculus.GRCm39.cdna.all.fa.gz
+
+# --- annotation ---
+gtf: data/references/gtf/Mus_musculus.GRCm39.115.gtf
+
+# --- tool parameters (mirror salmon_pipeline.sh) ---
+fastp_extra: "--trim_poly_g --qualified_quality_phred 20 --length_required 36"
+salmon_libtype: "A"
+salmon_extra: "--gcBias --validateMappings"
+min_mapping_rate: 0.6
+
+# --- differential expression (wraps scripts/run_deseq2.R unchanged) ---
+deseq2:
+  run: true
+  sample_table: examples/sample_table.csv
+  group_col: condition
+  design: null            # e.g. "~ sex + condition"; null -> "~ <group_col>"
+  test: Wald              # Wald | LRT
+  reduced: null           # required when test: LRT, e.g. "~ sex"
+  ref_level: control
+  contrast: null          # "factor,numerator,denominator"
+  project_name: project
+  padj_thresh: 0.05
+  lfc_thresh: 0.5
+
+# --- optional helper rules (get_refs / fetch_test_data); NOT in the default DAG ---
+refs:
+  species: mouse
+  build: GRCm39
+  release: "115"
+  decoy: true             # set false to fetch a cDNA-only (no-decoy) reference set
+fetch:
+  geo: GSE52778
+  runs: "SRR1039508,SRR1039509,SRR1039512,SRR1039513"
+  method: ena

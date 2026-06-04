@@ -30,3 +30,10 @@ conda_envs/
 .mamba/
 environment.lock.yml
 environment-r.lock.yml
+
+# Snakemake
+.snakemake/
+resources/
+
+# Snakemake controller env lock (optional)
+environment-snakemake.lock.yml

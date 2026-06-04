@@ -1,0 +1,10 @@
+# Default workflow profile (auto-loaded by Snakemake from workflow/profiles/default).
+#
+# rerun-triggers = mtime ONLY. This is essential for the prebuilt Salmon index:
+# the default triggers (code/params/input/software-env) would spuriously flag the
+# expensive `salmon_index` rule for a rebuild on ordinary re-invocations. With
+# mtime-only triggers plus the rule's ancient() inputs, the index is rebuilt ONLY
+# when its directory is missing — so the prebuilt mouse index at salmon_index/ is
+# never rebuilt. (Edit a rule and want it to re-run? use --forcerun <rule>.)
+rerun-triggers:
+  - mtime

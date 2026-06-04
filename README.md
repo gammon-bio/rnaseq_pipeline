@@ -18,6 +18,69 @@ mamba env create -f environment.lock.yml
 mamba env create -f environment-r.lock.yml
 ```
 
+## Run with Snakemake (recommended)
+
+A Snakemake workflow now wraps the same tools and flags as `salmon_pipeline.sh` (fastp → FastQC → Salmon quant → MultiQC + QC check → DESeq2). It adds resume-on-crash and the ability to run any stage on its own. Conda environments are Snakemake-managed with the mamba solver.
+
+**One-time setup:**
+```bash
+mamba env create -f environment-snakemake.yml
+conda activate snakemake
+```
+
+**Register the prebuilt mouse decoy index** so Snakemake treats it as up-to-date and **never** rebuilds it (run once, from the repo root):
+```bash
+snakemake --sdm conda --conda-frontend mamba --touch salmon_index
+```
+
+**Run the full pipeline** (default config = mouse, `config/config.yaml`):
+```bash
+snakemake --sdm conda --conda-frontend mamba -c 8 all
+```
+
+**Run a single stage / component** (the "one-by-one" capability):
+```bash
+snakemake --sdm conda --conda-frontend mamba -c 8 trim_all
+snakemake --sdm conda --conda-frontend mamba -c 8 quant_all
+snakemake --sdm conda --conda-frontend mamba -c 8 deseq2
+```
+
+**Resume after a crash** (re-runs only what's incomplete or missing):
+```bash
+snakemake --sdm conda --conda-frontend mamba -c 8 --rerun-incomplete all
+```
+
+Other useful flags: `-n` (dry run / plan), `--keep-going`, `--until <rule>`. And a safe cleanup:
+```bash
+snakemake clean      # removes ONLY out/ and logs/ — never references, raw FASTQs, the index, or .snakemake/
+```
+
+**Target rules:** `all`, `trim_all`, `fastqc_all`, `quant_all`, `multiqc`, `qc_check`, `deseq2`, `index`, `clean`, plus optional `get_refs` and `fetch_test_data`.
+
+**Configuration:** settings live in `config/config.yaml`. The DESeq2 multi-factor / LRT options live under the `deseq2:` block (`design`, `test`, `reduced`, `ref_level`, `contrast`, `group_col`, `project_name`, `padj_thresh`, `lfc_thresh`) and are passed through to the existing `scripts/run_deseq2.R` unchanged.
+
+> **Index protection:** the prebuilt mouse decoy index at `salmon_index/` is protected — the index rule uses `ancient()` inputs and a `protected()` output, and you register it once with `--touch`. A bundled workflow profile (`workflow/profiles/default/`, auto-loaded) sets `rerun-triggers: mtime`, so Snakemake rebuilds the index **only** when its directory is actually missing — never because unrelated rule code or params changed. The GSE52778 test below builds a **separate** human index at `resources/salmon_index_gse52778_cdna/`, so `salmon_index/` is never overwritten.
+
+### GSE52778 smoke test (Snakemake)
+
+Uses `config/config.test.yaml` (human, cDNA-only, fast). Each step is a separate invocation because sample discovery globs `data/fastq/` when the workflow loads:
+```bash
+# 1) download the 4 test FASTQs and standardize their names
+snakemake fetch_test_data --configfile config/config.test.yaml
+
+# 2) fetch the human cDNA transcriptome + GTF (no-decoy)
+snakemake get_refs --configfile config/config.test.yaml
+
+# 3) run the whole pipeline on the test data (builds a separate human cDNA index)
+snakemake all --configfile config/config.test.yaml --sdm conda --conda-frontend mamba -c 8
+```
+
+Expected biological sanity check: top DEGs include **FKBP5, MAOA, KLF15** (Dexamethasone vs untreated), matching the existing GSE52778 walkthrough below.
+
+## Run with bash (legacy / alternative)
+
+> The `bash salmon_pipeline.sh` walkthrough below is the original, still-supported path. The Snakemake workflow above wraps the same tools and flags and is recommended for new runs; use the bash pipeline if you prefer a single orchestrator script or are not using Snakemake.
+
 **2. Fetch reference genome and transcriptome:**
 
 Activate the CLI environment and download references:

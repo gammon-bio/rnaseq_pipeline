@@ -1,0 +1,35 @@
+# Snakemake workflow for the RNA-seq pipeline.
+#
+#   fastp (trim) -> FastQC (trimmed) -> Salmon quant -> MultiQC + QC check -> DESeq2
+#
+# Mirrors salmon_pipeline.sh exactly (same tools/flags), but each stage is a rule,
+# so a crashed run resumes where it stopped and any stage can be run on its own.
+# See README "Run with Snakemake" and config/config.yaml.
+#
+# Quick start (from the repo root):
+#   conda activate snakemake
+#   snakemake --sdm conda --conda-frontend mamba -c 8 all
+#
+# Run one stage:        snakemake --sdm conda --conda-frontend mamba -c 8 trim_all
+# Resume after a crash: snakemake --sdm conda --conda-frontend mamba -c 8 --rerun-incomplete all
+# Dry run (plan only):  snakemake -n all
+
+from snakemake.utils import min_version
+
+min_version("9.0")
+
+configfile: "config/config.yaml"
+
+include: "rules/common.smk"
+include: "rules/refs.smk"
+include: "rules/fetch.smk"
+include: "rules/trim.smk"
+include: "rules/quant.smk"
+include: "rules/qc.smk"
+include: "rules/deseq2.smk"
+
+
+rule all:
+    default_target: True
+    input:
+        all_targets(),

@@ -1,0 +1,38 @@
+# GSE52778 human smoke test (cDNA-only, fast).
+# Merged on top of config/config.yaml via: --configfile config/config.test.yaml
+#
+# IMPORTANT: writes the test index to a SEPARATE path, so the prebuilt MOUSE
+# decoy index at salmon_index/ is never touched.
+
+# --- Salmon index: separate human cDNA-only index ---
+salmon_index: resources/salmon_index_gse52778_cdna
+decoy_aware: false
+transcriptome: data/references/fa/Homo_sapiens.GRCh38.cdna.all.fa.gz
+
+# --- annotation: human ---
+gtf: data/references/gtf/Homo_sapiens.GRCh38.115.gtf
+
+# --- differential expression: untreated vs Dexamethasone ---
+deseq2:
+  run: true
+  sample_table: examples/sample_table_gse52778.csv
+  group_col: condition
+  design: null
+  test: Wald
+  reduced: null
+  ref_level: untreated
+  contrast: "condition,Dexamethasone,untreated"
+  project_name: GSE52778_test
+  padj_thresh: 0.05
+  lfc_thresh: 0.5
+
+# --- optional helper rules: human, cDNA-only ---
+refs:
+  species: human
+  build: GRCh38
+  release: "115"
+  decoy: false
+fetch:
+  geo: GSE52778
+  runs: "SRR1039508,SRR1039509,SRR1039512,SRR1039513"
+  method: ena

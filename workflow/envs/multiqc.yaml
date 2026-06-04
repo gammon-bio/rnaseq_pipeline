@@ -1,0 +1,8 @@
+# Seeded from environment.yml (multiqc=1.30, python=3.11); pinned to major.minor.
+# Also used for the pure-stdlib scripts/check_salmon_qc.py rule (needs only python).
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - multiqc=1.30

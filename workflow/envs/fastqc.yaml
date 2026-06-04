@@ -1,0 +1,6 @@
+# Seeded from environment.yml (fastqc=0.12.1); pinned to major.minor.
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - fastqc=0.12

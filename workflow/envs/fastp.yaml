@@ -1,0 +1,7 @@
+# Seeded from environment.yml (fastp=1.0.1); pinned to major.minor so the
+# rule resolves the latest compatible patch without churn.
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - fastp=1.0

@@ -1,0 +1,15 @@
+# Controller environment for the Snakemake workflow.
+# This is the only environment you create by hand; Snakemake builds every
+# per-rule environment itself (from workflow/envs/*.yaml and environment-r.yml)
+# under .snakemake/conda/ using the mamba solver.
+#
+#   mamba env create -f environment-snakemake.yml
+#   conda activate snakemake
+#   snakemake --sdm conda --conda-frontend mamba -c 8 all
+name: snakemake
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - snakemake-minimal>=9
+  - mamba

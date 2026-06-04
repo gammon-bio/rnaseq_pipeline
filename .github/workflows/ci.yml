@@ -73,3 +73,42 @@ jobs:
           micromamba run -q -n rnaseq bash -lc 'fasterq-dump --version'
           micromamba run -q -n rnaseq bash -lc 'pigz --version'
 
+  snakemake:
+    name: Snakemake DAG dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup micromamba (snakemake)
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: environment-snakemake.yml
+          cache-environment: true
+          cache-downloads: true
+          micromamba-version: latest
+
+      - name: Create placeholder input files
+        shell: bash -l {0}
+        run: |
+          set -e
+          mkdir -p data/fastq data/references/gtf data/references/fa
+          touch data/fastq/SRR1039508_R1_001.fastq.gz data/fastq/SRR1039508_R2_001.fastq.gz
+          touch data/fastq/SRR1039509_R1_001.fastq.gz data/fastq/SRR1039509_R2_001.fastq.gz
+          touch data/fastq/SRR1039512_R1_001.fastq.gz data/fastq/SRR1039512_R2_001.fastq.gz
+          touch data/fastq/SRR1039513_R1_001.fastq.gz data/fastq/SRR1039513_R2_001.fastq.gz
+          touch data/references/gtf/Homo_sapiens.GRCh38.115.gtf
+          touch data/references/fa/Homo_sapiens.GRCh38.cdna.all.fa.gz
+
+      - name: Snakemake lint (non-fatal)
+        shell: bash -l {0}
+        run: |
+          micromamba run -n snakemake snakemake --lint || true
+
+      - name: Snakemake dry-run (authoritative)
+        shell: bash -l {0}
+        run: |
+          set -e
+          # target 'all' must come before the variadic --configfile flag
+          micromamba run -n snakemake snakemake -n all --configfile config/config.test.yaml
+
