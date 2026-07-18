@@ -1,7 +1,11 @@
-# Seeded from environment.yml (salmon=1.10.3); pinned to major.minor.
-# Matches the salmon version that built the prebuilt mouse index (index_version 4, sshash).
+# Pinned to salmon 1.11.4 — the version that BUILT the prebuilt mouse decoy index now in
+# shared_refs (salmon_index/versionInfo.json: salmonVersion 1.11.4, indexVersion 6).
+# salmon 1.10.x CANNOT read a 1.11.x-built index: it misreads the format and aborts at
+# load with `Exception : [std::bad_alloc]` (not an OOM). The index can't be rebuilt against
+# 1.10 because gentrome.fa.gz is no longer staged in shared_refs, so the quantifier is
+# aligned to the index. Verified: 1.11.4 quants this index cleanly (AB32_12 -> 84.5% mapping).
 channels:
   - conda-forge
   - bioconda
 dependencies:
-  - salmon=1.10
+  - salmon=1.11.4
