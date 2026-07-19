@@ -66,12 +66,15 @@ jobs:
         shell: bash -l {0}
         run: |
           set -e
-          micromamba run -q -n rnaseq bash -lc 'fastqc --version || true'
-          micromamba run -q -n rnaseq bash -lc 'salmon --version'
-          micromamba run -q -n rnaseq bash -lc 'multiqc --version'
-          micromamba run -q -n rnaseq bash -lc 'parallel --version'
-          micromamba run -q -n rnaseq bash -lc 'fasterq-dump --version'
-          micromamba run -q -n rnaseq bash -lc 'pigz --version'
+          # Core env tools (must be present).
+          micromamba run -n rnaseq bash -lc 'fastqc --version || true'
+          micromamba run -n rnaseq bash -lc 'salmon --version'
+          micromamba run -n rnaseq bash -lc 'multiqc --version'
+          # Optional helpers used only by scripts/fetch_test_fastqs.sh (guarded by command -v there);
+          # not part of the lean core env, so their checks are non-fatal.
+          micromamba run -n rnaseq bash -lc 'parallel --version' || true
+          micromamba run -n rnaseq bash -lc 'fasterq-dump --version' || true
+          micromamba run -n rnaseq bash -lc 'pigz --version' || true
 
   snakemake:
     name: Snakemake DAG dry-run
